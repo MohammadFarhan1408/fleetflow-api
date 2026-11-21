@@ -142,6 +142,9 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "FleetFlow API",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Pinned so operation IDs and tags never depend on which routes are mounted (docs
+    # routes exist only locally); otherwise the committed schema differs between machines.
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 

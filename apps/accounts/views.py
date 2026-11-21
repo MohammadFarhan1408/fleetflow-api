@@ -31,17 +31,16 @@ ERROR = OpenApiResponse(ErrorSerializer)
 
 
 class PublicAuthView(APIView):
-    """Endpoints reachable without a session.
-
-    No authentication classes: a stale or expired Authorization header must not stop a
-    client from logging in, refreshing or logging out.
-    """
-
+    # Reachable without a session. No authentication classes: a stale or expired
+    # Authorization header must not stop a client from logging in, refreshing or logging
+    # out. (A comment, not a docstring, so it does not leak into the OpenAPI schema.)
     authentication_classes = []
     permission_classes = [AllowAny]
 
 
 class LoginView(PublicAuthView):
+    """Log in with email and password; returns an access and refresh token pair."""
+
     throttle_classes = [LoginThrottle]
 
     @extend_schema(
@@ -57,6 +56,9 @@ class LoginView(PublicAuthView):
 
 
 class RefreshView(PublicAuthView):
+    """Rotate a refresh token. Retrying the same token within 30 s returns a fresh pair;
+    reusing it later ends the session (401 `auth.token_invalid`)."""
+
     throttle_classes = [RefreshThrottle]
 
     @extend_schema(
@@ -74,6 +76,8 @@ class RefreshView(PublicAuthView):
 
 
 class LogoutView(PublicAuthView):
+    """End this device's session, including its access token. Idempotent."""
+
     @extend_schema(
         request=RefreshTokenSerializer,
         responses={204: None, 400: ERROR, 401: ERROR},
@@ -87,6 +91,8 @@ class LogoutView(PublicAuthView):
 
 
 class PasswordResetRequestView(PublicAuthView):
+    """Email a password reset link. Always 202, whether or not the account exists."""
+
     throttle_classes = [PasswordResetEmailThrottle, PasswordResetIPThrottle]
 
     @extend_schema(
@@ -103,6 +109,8 @@ class PasswordResetRequestView(PublicAuthView):
 
 
 class PasswordResetConfirmView(PublicAuthView):
+    """Set a new password from an emailed reset or invite link; ends every session."""
+
     @extend_schema(
         request=PasswordResetConfirmSerializer,
         responses={204: None, 400: ERROR},
@@ -116,6 +124,8 @@ class PasswordResetConfirmView(PublicAuthView):
 
 
 class MeView(APIView):
+    """Session bootstrap: the user, company, branches, roles and permissions."""
+
     @extend_schema(responses={200: MeSerializer, 401: ERROR, 403: ERROR})
     def get(self, request: Request) -> Response:
         user: User = request.user  # type: ignore[assignment]  # IsAuthenticated guarantees User
