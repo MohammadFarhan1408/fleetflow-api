@@ -7,23 +7,27 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Field          | Value                                                                          |
 | -------------- | ------------------------------------------------------------------------------ |
 | Application    | fleetflow-api (backend)                                                        |
-| Current phase  | Phase 0: Architecture & Project Setup (technical setup done; awaiting owner review) |
-| Current branch | `feature/api-setup`                                                            |
-| Overall status | Empty, runnable Django project with tooling and CI. No domain code yet.        |
+| Current phase  | Phase 1: Core Foundation (in progress; Phase 0 completed 2026-11-22)               |
+| Current branch | `chore/python-3.14`                                                            |
+| Overall status | Phase 0 merged (PR #1). Phase 1 started: runtime moving to Python 3.14.        |
 | Last updated   | 2026-11-22                                                                     |
 
 ## Completed work
 
 | Date       | Branch             | Work                                                                                        | Files                                                                                                                       | Tests run      | Result |
 | ---------- | ------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ |
-| 2026-11-22 | feature/api-setup | Phase 0 technical setup: uv project, settings split, Docker Compose (api, worker, beat, PostGIS, Redis), health endpoints, `apps/core` (abstract `TimeStampedModel`, PostGIS extension migration), drf-spectacular empty schema, GitHub Actions CI | pyproject.toml, uv.lock, Dockerfile, compose.yaml, .env.example, config/\*, apps/core/\*, openapi/schema.yaml, .github/workflows/ci.yml, README.md | ruff, mypy, makemigrations --check, pytest (13 tests), pip-audit, schema validate; manual `docker compose up` and DB-stop 503 check | All pass locally. CI not yet run (branch not pushed) |
+| 2026-11-22 | chore/python-3.14 | Runtime moved to Python 3.14 (host 3.14.6, image `python:3.14-slim` = 3.14.10); lockfile re-resolved | .python-version, pyproject.toml, uv.lock, Dockerfile, docs | ruff, mypy, makemigrations --check, pytest (13 tests), pip-audit, schema validate; `docker compose up` healthy on 3.14 | All pass locally. CI pending |
+| 2026-11-22 | feature/api-setup (merged, PR #1) | Phase 0 technical setup: uv project, settings split, Docker Compose (api, worker, beat, PostGIS, Redis), health endpoints, `apps/core` (abstract `TimeStampedModel`, PostGIS extension migration), drf-spectacular empty schema, GitHub Actions CI | pyproject.toml, uv.lock, Dockerfile, compose.yaml, .env.example, config/\*, apps/core/\*, openapi/schema.yaml, .github/workflows/ci.yml, README.md | ruff, mypy, makemigrations --check, pytest (13 tests), pip-audit, schema validate; manual `docker compose up` and DB-stop 503 check | All pass locally; CI green on PR #1 and on `main` after merge |
 | 2026-11-21 | main | Workspace and documentation setup: repo initialized, docs written, Claude skills configured | CLAUDE.md, architecture.md, phases.md, rules.md, memory.md, skills.md, .claude/settings.json, .claude/skills/\*, .gitignore | None (no code) | n/a    |
 
 ## Current work
 
 | Task                         | Branch             | Status                | In progress | Blockers                                  |
 | ---------------------------- | ------------------ | --------------------- | ----------- | ----------------------------------------- |
-| Phase 0 technical setup | feature/api-setup | Awaiting owner review | — | CI must run green on a PR (branch not pushed yet) |
+| Phase 1 PR 1/4: Python 3.14 + Phase 0 completion docs | chore/python-3.14 | Ready for PR | — | — |
+| Phase 1 PR 2/4: errors, request ID, app version, tenancy, accounts models, RBAC seed, audit, `create_company` | feature/api-foundation | Not started | — | PR 1 merged |
+| Phase 1 PR 3/4: auth flows, throttles, lockout, `/me` | feature/api-auth | Not started | — | PR 2 merged |
+| Phase 1 PR 4/4: users API, idempotency, tenant sweep, CI gates | feature/api-users | Not started | — | PR 3 merged |
 
 ## Decisions
 
@@ -41,6 +45,8 @@ Factual record only. Update it after every substantial task, dependency or archi
 | D-API-7 | uv manages Python and dependencies (`pyproject.toml` + `uv.lock`) | Phase 0 setup | pip-tools, Poetry | Fast, single tool, exact lockfile, installs the Python version | 2026-11-22 | feature/api-setup | PROPOSED | CI and Dockerfile use uv |
 | D-API-8 | Plain `postgresql` DB engine until Phase 2; PostGIS extension enabled by `core/0001_postgis` migration | Phase 0 smoke test needs PostGIS, not GeoDjango | GeoDjango engine now | Avoids GDAL/GEOS in image and CI until the first geometry field | 2026-11-22 | feature/api-setup | PROPOSED | Phase 2 switches to `django.contrib.gis.db.backends.postgis` and installs GDAL |
 | D-API-9 | Object storage service (MinIO) left out of Phase 0 Compose | MinIO stopped publishing community Docker images in late 2025; no storage code until Phase 3 | Pin an old MinIO image | Don't pin an unmaintained image for an unused service | 2026-11-22 | feature/api-setup | PROPOSED | Choose the local S3-compatible server in Phase 3 with django-storages |
+| D-API-10 | Python 3.14 runtime | UUIDv7 public IDs (architecture §6) need `uuid.uuid7()`, stdlib only from 3.14 | Stay on 3.13 + `uuid-utils` | No extra dependency; all deps resolve to 3.14 wheels (dry run 2026-11-22) | 2026-11-22 | chore/python-3.14 | APPROVED (owner) | Dockerfile, CI, .python-version |
+| D-API-11 | Phase 1 decisions: one company per user; companies created by `create_company` management command; 426 min app version in Phase 1; 30 s refresh-reuse grace window; RBAC in DB tables; minimal users API (list, detail, invite, patch) | Phase 1 planning | Multi-company membership; Django admin or public signup; strict reuse; code-defined roles; test-only views | See approved Phase 1 plan | 2026-11-22 | chore/python-3.14 | APPROVED (owner) | Admin and driver-app auth contract (recorded when PR 3 lands) |
 | D-WS-3  | Engineering standards added: principles and definition of done in CLAUDE.md; enforceable detail merged into rules.md §1–5, §8 and new §10 (constants and configuration) | Owner-supplied engineering standards                  | Paste the full text into CLAUDE.md | Avoids duplicating existing rules and keeps CLAUDE.md a short entry point; frontend-only items (TypeScript, ESLint, UI styling) omitted for this backend repo | 2026-11-21 | main   | APPROVED (owner) | All future API work                       |
 
 ## Dependencies added/changed
@@ -66,7 +72,7 @@ Installed 2026-11-22 on `feature/api-setup` (exact pins in `uv.lock`):
 
 Deferred to the phase that needs them: simplejwt, factory_boy (Phase 1); structlog, sentry-sdk (Phase 1 or later); django-storages, boto3 (Phase 3); channels (Phase 7); gunicorn (Phase 11).
 
-Images: `postgis/postgis:18-3.6`, `redis:8.2-alpine`, `python:3.13-slim`, uv 0.12.1.
+Images: `postgis/postgis:18-3.6`, `redis:8.2-alpine`, `python:3.14-slim` (Python 3.13 until 2026-11-22, D-API-10), uv 0.12.1.
 
 ## Incoming client requests
 
@@ -87,11 +93,15 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ### feature/api-setup
 
-- Status: Complete locally, awaiting owner review and PR. Work: Phase 0 technical setup. Implemented: see Completed work 2026-11-22. Tests: 13 pass locally against PostGIS 18-3.6 and Redis 8.2. CI: not yet run.
+- Status: Merged to `main` (PR #1, `1c58f01`). Work: Phase 0 technical setup. Tests: 13 pass; CI green on the PR and on `main`.
 
-### feature/api-auth (planned)
+### chore/python-3.14
 
-- Status: Not started. Planned work: Phase 1 core foundation. Implemented: none. Tests: none.
+- Status: Ready for PR. Work: Phase 1 PR 1/4, runtime to Python 3.14 and Phase 0 completion docs. Tests: 13 pass locally on 3.14; CI pending.
+
+### feature/api-foundation, feature/api-auth, feature/api-users (planned)
+
+- Status: Not started. Planned work: Phase 1 PRs 2–4. Implemented: none. Tests: none.
 
 ## Known issues
 
@@ -102,6 +112,5 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ## Next steps
 
-1. Owner reviews the `feature/api-setup` layout, D-API-7/8/9 and CI.
-2. Push `feature/api-setup`, open a PR, confirm CI is green (Phase 0 acceptance).
-3. Merge after approval, mark Phase 0 COMPLETED, then start Phase 1 on `feature/api-auth`.
+1. Push `chore/python-3.14`, open a PR, confirm CI is green on 3.14, merge after approval.
+2. Start `feature/api-foundation` (Phase 1 PR 2/4).

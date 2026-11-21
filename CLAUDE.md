@@ -1,6 +1,6 @@
 # fleetflow-api: Claude Code Instructions
 
-> **Phase 0 technical setup is implemented and awaiting owner review.** Do not start Phase 1 (or any domain models, auth or business endpoints) until the owner signs off Phase 0. Check [phases.md](phases.md) for the current phase.
+> **Phase 1 (Core Foundation) is in progress** as four sequential PRs (see [memory.md](memory.md) §Current work). Work only on Phase 1 scope; customers, shipments and later-phase modules wait for their phase. Check [phases.md](phases.md) for the current phase.
 
 ## Identity
 
