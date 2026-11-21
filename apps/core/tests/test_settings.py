@@ -9,6 +9,7 @@ import pytest
 
 REQUIRED_ENV = {
     "DJANGO_SECRET_KEY": "test-only-secret",
+    "JWT_SIGNING_KEY": "test-only-jwt-key",
     "DATABASE_URL": "postgres://user:pass@localhost:5432/fleetflow",
     "REDIS_URL": "redis://localhost:6379/0",
     "DJANGO_ALLOWED_HOSTS": "api.example.com",
@@ -48,7 +49,9 @@ def test_settings_module_loads(module: str, expected_debug: str) -> None:
     assert result.stdout.strip() == expected_debug
 
 
-@pytest.mark.parametrize("missing", ["DJANGO_SECRET_KEY", "DATABASE_URL", "REDIS_URL"])
+@pytest.mark.parametrize(
+    "missing", ["DJANGO_SECRET_KEY", "JWT_SIGNING_KEY", "DATABASE_URL", "REDIS_URL"]
+)
 def test_production_fails_fast_without_required_env(missing: str) -> None:
     env = {k: v for k, v in REQUIRED_ENV.items() if k != missing}
 
@@ -75,7 +78,7 @@ def test_local_settings_do_not_need_production_only_values() -> None:
     env = {
         k: v
         for k, v in REQUIRED_ENV.items()
-        if k in {"DJANGO_SECRET_KEY", "DATABASE_URL", "REDIS_URL"}
+        if k in {"DJANGO_SECRET_KEY", "JWT_SIGNING_KEY", "DATABASE_URL", "REDIS_URL"}
     }
 
     result = run_with_settings("config.settings.local", env)
