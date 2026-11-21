@@ -8,15 +8,16 @@ Factual record only. Update it after every substantial task, dependency or archi
 | -------------- | ------------------------------------------------------------------------------ |
 | Application    | fleetflow-api (backend)                                                        |
 | Current phase  | Phase 1: Core Foundation (in progress; Phase 0 completed 2026-11-22)               |
-| Current branch | `chore/python-3.14`                                                            |
-| Overall status | Phase 0 merged (PR #1). Phase 1 started: runtime moving to Python 3.14.        |
+| Current branch | `feature/api-foundation`                                                       |
+| Overall status | Phase 1 PR 1/4 merged (#2). PR 2/4 (foundation) implemented, awaiting review.  |
 | Last updated   | 2026-11-22                                                                     |
 
 ## Completed work
 
 | Date       | Branch             | Work                                                                                        | Files                                                                                                                       | Tests run      | Result |
 | ---------- | ------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ |
-| 2026-11-22 | chore/python-3.14 | Runtime moved to Python 3.14 (host 3.14.6, image `python:3.14-slim` = 3.14.10); lockfile re-resolved | .python-version, pyproject.toml, uv.lock, Dockerfile, docs | ruff, mypy, makemigrations --check, pytest (13 tests), pip-audit, schema validate; `docker compose up` healthy on 3.14 | All pass locally. CI pending |
+| 2026-11-22 | feature/api-foundation | Phase 1 PR 2/4: error registry and envelope (`core/errors.py`, DRF exception handler, JSON 404/500), request ID middleware, 426 app-version middleware, `PublicIdModel` (UUIDv7), tenancy (`Company`, `Branch`, `TenantScopedModel`), custom `User` (email login, one company), `Role`/`Permission` seeded by data migration, append-only `AuditLog` + `audit.services.record`, invite email task, `create_company` command; removed Django admin, sessions, messages; DRF JSON-only with no implicit Session/Basic auth | apps/core/\*, apps/tenancy/\*, apps/audit/\*, apps/accounts/\*, config/settings/\*, config/urls.py, .env.example, pyproject.toml | ruff, mypy, makemigrations --check, pytest (80 tests, 98 % coverage), pip-audit, schema validate; manual: `create_company` in Compose, invite delivered by worker, duplicate email rejected | All pass locally. CI pending |
+| 2026-11-22 | chore/python-3.14 (merged, PR #2) | Runtime moved to Python 3.14 (host 3.14.6, image `python:3.14-slim` = 3.14.10); lockfile re-resolved | .python-version, pyproject.toml, uv.lock, Dockerfile, docs | ruff, mypy, makemigrations --check, pytest (13 tests), pip-audit, schema validate; `docker compose up` healthy on 3.14 | All pass locally. CI pending |
 | 2026-11-22 | feature/api-setup (merged, PR #1) | Phase 0 technical setup: uv project, settings split, Docker Compose (api, worker, beat, PostGIS, Redis), health endpoints, `apps/core` (abstract `TimeStampedModel`, PostGIS extension migration), drf-spectacular empty schema, GitHub Actions CI | pyproject.toml, uv.lock, Dockerfile, compose.yaml, .env.example, config/\*, apps/core/\*, openapi/schema.yaml, .github/workflows/ci.yml, README.md | ruff, mypy, makemigrations --check, pytest (13 tests), pip-audit, schema validate; manual `docker compose up` and DB-stop 503 check | All pass locally; CI green on PR #1 and on `main` after merge |
 | 2026-11-21 | main | Workspace and documentation setup: repo initialized, docs written, Claude skills configured | CLAUDE.md, architecture.md, phases.md, rules.md, memory.md, skills.md, .claude/settings.json, .claude/skills/\*, .gitignore | None (no code) | n/a    |
 
@@ -24,8 +25,8 @@ Factual record only. Update it after every substantial task, dependency or archi
 
 | Task                         | Branch             | Status                | In progress | Blockers                                  |
 | ---------------------------- | ------------------ | --------------------- | ----------- | ----------------------------------------- |
-| Phase 1 PR 1/4: Python 3.14 + Phase 0 completion docs | chore/python-3.14 | Ready for PR | — | — |
-| Phase 1 PR 2/4: errors, request ID, app version, tenancy, accounts models, RBAC seed, audit, `create_company` | feature/api-foundation | Not started | — | PR 1 merged |
+| Phase 1 PR 1/4: Python 3.14 + Phase 0 completion docs | chore/python-3.14 | Merged (PR #2) | — | — |
+| Phase 1 PR 2/4: errors, request ID, app version, tenancy, accounts models, RBAC seed, audit, `create_company` | feature/api-foundation | Ready for PR | — | — |
 | Phase 1 PR 3/4: auth flows, throttles, lockout, `/me` | feature/api-auth | Not started | — | PR 2 merged |
 | Phase 1 PR 4/4: users API, idempotency, tenant sweep, CI gates | feature/api-users | Not started | — | PR 3 merged |
 
@@ -47,6 +48,8 @@ Factual record only. Update it after every substantial task, dependency or archi
 | D-API-9 | Object storage service (MinIO) left out of Phase 0 Compose | MinIO stopped publishing community Docker images in late 2025; no storage code until Phase 3 | Pin an old MinIO image | Don't pin an unmaintained image for an unused service | 2026-11-22 | feature/api-setup | PROPOSED | Choose the local S3-compatible server in Phase 3 with django-storages |
 | D-API-10 | Python 3.14 runtime | UUIDv7 public IDs (architecture §6) need `uuid.uuid7()`, stdlib only from 3.14 | Stay on 3.13 + `uuid-utils` | No extra dependency; all deps resolve to 3.14 wheels (dry run 2026-11-22) | 2026-11-22 | chore/python-3.14 | APPROVED (owner) | Dockerfile, CI, .python-version |
 | D-API-11 | Phase 1 decisions: one company per user; companies created by `create_company` management command; 426 min app version in Phase 1; 30 s refresh-reuse grace window; RBAC in DB tables; minimal users API (list, detail, invite, patch) | Phase 1 planning | Multi-company membership; Django admin or public signup; strict reuse; code-defined roles; test-only views | See approved Phase 1 plan | 2026-11-22 | chore/python-3.14 | APPROVED (owner) | Admin and driver-app auth contract (recorded when PR 3 lands) |
+| D-API-12 | No Django admin, sessions, messages, superuser or staff flag; custom `User` extends `AbstractBaseUser` only | JWT-only API, RBAC is FleetFlow's own (D-API-11) | Keep admin for platform staff | Less attack surface; Django's permission tables would duplicate RBAC | 2026-11-22 | feature/api-foundation | PROPOSED | `createsuperuser` is not available; onboarding is `create_company`. API docs served only where `API_DOCS_ENABLED` (local) |
+| D-API-13 | Phase 1 plan adjustments: `TenantScopedModel` lives in `tenancy`; permission codenames, `HasPermission`, cursor pagination and `TokenFamily` land in the PR that first uses them (3 or 4) instead of PR 2; `factory-boy` added in PR 2 because its tests need it | Implementation of PR 2 | Follow the plan literally | Keeps the dependency direction clean and avoids unused code | 2026-11-22 | feature/api-foundation | PROPOSED | None on contracts |
 | D-WS-3  | Engineering standards added: principles and definition of done in CLAUDE.md; enforceable detail merged into rules.md §1–5, §8 and new §10 (constants and configuration) | Owner-supplied engineering standards                  | Paste the full text into CLAUDE.md | Avoids duplicating existing rules and keeps CLAUDE.md a short entry point; frontend-only items (TypeScript, ESLint, UI styling) omitted for this backend repo | 2026-11-21 | main   | APPROVED (owner) | All future API work                       |
 
 ## Dependencies added/changed
@@ -68,6 +71,7 @@ Installed 2026-11-22 on `feature/api-setup` (exact pins in `uv.lock`):
 | mypy | 1.19.1 | dev | Type check. Held below 2.x by django-stubs 5.2.x `compatible-mypy` |
 | django-stubs / djangorestframework-stubs | 5.2.9 / 3.16.9 | dev | Types matching Django 5.2 |
 | pytest / pytest-django / pytest-cov | 9.2.0 / 4.14.0 / 7.1.0 | dev | Tests and coverage |
+| factory-boy (+ Faker) | 3.3.3 (40.63.0) | dev | Model factories (architecture §26.1); added 2026-11-22 on `feature/api-foundation` |
 | pip-audit | 2.10.1 | dev | Dependency vulnerability audit |
 
 Deferred to the phase that needs them: simplejwt, factory_boy (Phase 1); structlog, sentry-sdk (Phase 1 or later); django-storages, boto3 (Phase 3); channels (Phase 7); gunicorn (Phase 11).
@@ -97,11 +101,15 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ### chore/python-3.14
 
-- Status: Ready for PR. Work: Phase 1 PR 1/4, runtime to Python 3.14 and Phase 0 completion docs. Tests: 13 pass locally on 3.14; CI pending.
+- Status: Merged to `main` (PR #2, `25e749b`). Work: Phase 1 PR 1/4, runtime to Python 3.14 and Phase 0 completion docs.
 
-### feature/api-foundation, feature/api-auth, feature/api-users (planned)
+### feature/api-foundation
 
-- Status: Not started. Planned work: Phase 1 PRs 2–4. Implemented: none. Tests: none.
+- Status: Ready for PR. Work: Phase 1 PR 2/4 (see Completed work). Tests: 80 pass locally, 98 % coverage. Local DBs must be recreated (`docker compose down -v`) because `AUTH_USER_MODEL` changed. CI pending.
+
+### feature/api-auth, feature/api-users (planned)
+
+- Status: Not started. Planned work: Phase 1 PRs 3–4. Implemented: none. Tests: none.
 
 ## Known issues
 
@@ -112,5 +120,5 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ## Next steps
 
-1. Push `chore/python-3.14`, open a PR, confirm CI is green on 3.14, merge after approval.
-2. Start `feature/api-foundation` (Phase 1 PR 2/4).
+1. Push `feature/api-foundation`, open a PR, confirm CI is green, merge after approval.
+2. Start `feature/api-auth` (Phase 1 PR 3/4).
