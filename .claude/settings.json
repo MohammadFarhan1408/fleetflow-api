@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "ponytail": { "source": { "source": "github", "repo": "DietrichGebert/ponytail" } },
+    "caveman": { "source": { "source": "github", "repo": "JuliusBrussee/caveman" } }
+  },
+  "enabledPlugins": {
+    "ponytail@ponytail": true,
+    "caveman@caveman": true,
+    "superpowers@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false,
+    "impeccable@impeccable": false,
+    "claude-seo@agricidaniel-claude-seo": false
+  }
+}
