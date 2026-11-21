@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, ClassVar
 
 from django.contrib.auth.base_user import AbstractBaseUser, BaseUserManager
@@ -89,8 +90,6 @@ class User(AbstractBaseUser, PublicIdModel, TimeStampedModel):
     full_name = models.CharField(max_length=200)
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="users")
     is_active = models.BooleanField(default=True)
-    # Access tokens issued before this instant are rejected (password reset, deactivation).
-    sessions_revoked_at = models.DateTimeField(null=True, blank=True)
     roles = models.ManyToManyField(Role, related_name="users", blank=True)
     branches = models.ManyToManyField(Branch, related_name="users", blank=True)
 
@@ -110,3 +109,45 @@ class User(AbstractBaseUser, PublicIdModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return self.email
+
+
+class TokenFamilyRevokedReason(models.TextChoices):
+    LOGOUT = "logout", "Logout"
+    REUSE = "reuse", "Refresh token reuse"
+    PASSWORD_RESET = "password_reset", "Password reset"
+    DEACTIVATED = "deactivated", "User deactivated"
+
+
+class TokenFamily(models.Model):
+    """One login session (one device). Every refresh token rotated from that login shares
+    the family ID in its `fam` claim, so the whole session can be revoked at once."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="token_families")
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    revoked_reason = models.CharField(
+        max_length=20, choices=TokenFamilyRevokedReason.choices, blank=True
+    )
+
+    class Meta:
+        verbose_name_plural = "token families"
+
+    def __str__(self) -> str:
+        return str(self.id)
+
+
+class RefreshTokenRecord(models.Model):
+    """Tracks each issued refresh token by `jti` only.
+
+    The token itself is never stored, so a database read cannot be replayed as a session.
+    `used_at` drives rotation and reuse detection.
+    """
+
+    jti = models.CharField(max_length=64, primary_key=True)
+    family = models.ForeignKey(TokenFamily, on_delete=models.CASCADE, related_name="tokens")
+    expires_at = models.DateTimeField(db_index=True)
+    used_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self) -> str:
+        return self.jti

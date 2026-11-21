@@ -69,6 +69,10 @@ class CrashingApiView(OpenView):
         raise RuntimeError("password=hunter2 at db-internal.example")
 
 
+def forbidden_django_view(request: HttpRequest) -> HttpResponse:
+    raise PermissionDenied
+
+
 def crashing_django_view(request: HttpRequest) -> HttpResponse:
     raise RuntimeError("secret internal detail")
 
@@ -83,7 +87,10 @@ urlpatterns = [
     path("api/v1/test/django-403/", DjangoPermissionDeniedView.as_view()),
     path("api/v1/test/crash/", CrashingApiView.as_view()),
     path("test/django-crash/", crashing_django_view),
+    path("test/django-forbidden/", forbidden_django_view),
 ]
 
+handler400 = "apps.core.views.bad_request"
+handler403 = "apps.core.views.permission_denied"
 handler404 = "apps.core.views.not_found"
 handler500 = "apps.core.views.server_error"

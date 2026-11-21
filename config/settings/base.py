@@ -1,5 +1,6 @@
 """Settings shared by every environment. Environment-specific modules import from here."""
 
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -16,6 +17,8 @@ if not env.bool("FLEETFLOW_NO_DOTENV", default=False):
 SECRET_KEY = env.str("DJANGO_SECRET_KEY")
 DATABASES = {"default": env.db_url("DATABASE_URL")}
 REDIS_URL = env.str("REDIS_URL")
+# Separate from SECRET_KEY so JWTs can be rotated (forcing re-login) independently.
+JWT_SIGNING_KEY = env.str("JWT_SIGNING_KEY")
 
 DEBUG = False
 ALLOWED_HOSTS: list[str] = env.list("DJANGO_ALLOWED_HOSTS", default=[])
@@ -35,6 +38,9 @@ INSTALLED_APPS = [
 ]
 
 AUTH_USER_MODEL = "accounts.User"
+# Lets inactive users authenticate so login can answer `auth.user_disabled` after the
+# password is verified (never before, so the response cannot reveal which emails exist).
+AUTHENTICATION_BACKENDS = ["django.contrib.auth.backends.AllowAllUsersModelBackend"]
 
 MIDDLEWARE = [
     # First, so every response (including early rejections below) carries the request ID.
@@ -87,17 +93,45 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-    # JWT authentication arrives in Phase 1 PR 3. Until then nothing authenticates, which
-    # also removes DRF's implicit Session and Basic authentication defaults.
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    # JWT only; this also removes DRF's implicit Session and Basic authentication.
+    "DEFAULT_AUTHENTICATION_CLASSES": ["apps.accounts.authentication.JWTAuthentication"],
     # Deny by default; every endpoint opts in to its access rules.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "EXCEPTION_HANDLER": "apps.core.exception_handler.exception_handler",
+    "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.UserRateThrottle"],
+    # Architecture §20. Scoped rates apply to the auth endpoints that name them.
+    "DEFAULT_THROTTLE_RATES": {
+        "user": "600/min",
+        "login": "5/min",
+        "refresh": "30/min",
+        "password_reset_email": "3/hour",
+        "password_reset_ip": "10/hour",
+    },
     # DRF's default (None) trusts the whole X-Forwarded-For header, which clients can
     # spoof. Set this to the number of trusted proxies in front of the app.
     "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+        "KEY_PREFIX": "fleetflow",
+    }
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "SIGNING_KEY": JWT_SIGNING_KEY,
+    "ALGORITHM": "HS256",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    # Tokens identify users by public ID; internal integer IDs never leave the API.
+    "USER_ID_FIELD": "public_id",
+    "USER_ID_CLAIM": "user_id",
+    "UPDATE_LAST_LOGIN": False,
 }
 
 # Interactive docs are served only where explicitly enabled (local). Clients consume the
@@ -108,6 +142,9 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "FleetFlow API",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Pinned so operation IDs and tags never depend on which routes are mounted (docs
+    # routes exist only locally); otherwise the committed schema differs between machines.
+    "SCHEMA_PATH_PREFIX": r"/api/v1",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
 
@@ -126,3 +163,9 @@ CELERY_BROKER_URL = REDIS_URL
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TIMEZONE = TIME_ZONE
+CELERY_BEAT_SCHEDULE = {
+    "purge-expired-refresh-tokens": {
+        "task": "apps.accounts.tasks.purge_expired_refresh_tokens",
+        "schedule": timedelta(days=1),
+    },
+}

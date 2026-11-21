@@ -10,6 +10,7 @@ dependencies = [
     "django>=5.2,<5.3",
     "django-environ",
     "djangorestframework",
+    "djangorestframework-simplejwt>=5.5.1",
     "drf-spectacular",
     "psycopg[binary]",
     "redis",
@@ -46,6 +47,8 @@ ignore = ["RUF012"]
 [tool.ruff.lint.per-file-ignores]
 # assert is the pytest idiom; tests set throwaway secrets for settings checks.
 "**/tests/**" = ["S101", "S105", "S106", "S603"]
+# Error codes such as "auth.token_invalid" are not passwords.
+"apps/core/errors.py" = ["S105"]
 
 [tool.mypy]
 python_version = "3.14"
@@ -68,6 +71,11 @@ implicit_reexport = true
 module = ["apps.*.factories"]
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
+
+# drf-spectacular's extension base class registers subclasses through an untyped hook.
+[[tool.mypy.overrides]]
+module = ["apps.accounts.schema"]
+disallow_untyped_calls = false
 
 # Celery's decorators are untyped (no stubs), so task functions lose their signature.
 [[tool.mypy.overrides]]

@@ -30,6 +30,13 @@ class ErrorCode(StrEnum):
     REQUEST_MALFORMED = "request.malformed"
     AUTH_NOT_AUTHENTICATED = "auth.not_authenticated"
     AUTH_AUTHENTICATION_FAILED = "auth.authentication_failed"
+    AUTH_INVALID_CREDENTIALS = "auth.invalid_credentials"
+    AUTH_USER_DISABLED = "auth.user_disabled"
+    AUTH_COMPANY_SUSPENDED = "auth.company_suspended"
+    AUTH_TOKEN_EXPIRED = "auth.token_expired"
+    AUTH_TOKEN_INVALID = "auth.token_invalid"
+    AUTH_ACCOUNT_LOCKED = "auth.account_locked"
+    AUTH_INVALID_RESET_TOKEN = "auth.invalid_reset_token"
     PERMISSION_DENIED = "permission.denied"
     NOT_FOUND = "not_found"
     METHOD_NOT_ALLOWED = "method_not_allowed"
@@ -59,6 +66,20 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.AUTH_AUTHENTICATION_FAILED: ErrorSpec(
         401, ErrorType.AUTHENTICATION, "Authentication failed"
+    ),
+    ErrorCode.AUTH_INVALID_CREDENTIALS: ErrorSpec(
+        401, ErrorType.AUTHENTICATION, "Invalid email or password"
+    ),
+    ErrorCode.AUTH_USER_DISABLED: ErrorSpec(401, ErrorType.AUTHENTICATION, "Account disabled"),
+    ErrorCode.AUTH_COMPANY_SUSPENDED: ErrorSpec(403, ErrorType.PERMISSION, "Company suspended"),
+    # Clients refresh on token_expired only; token_invalid means log in again.
+    ErrorCode.AUTH_TOKEN_EXPIRED: ErrorSpec(401, ErrorType.AUTHENTICATION, "Token expired"),
+    ErrorCode.AUTH_TOKEN_INVALID: ErrorSpec(401, ErrorType.AUTHENTICATION, "Token invalid"),
+    ErrorCode.AUTH_ACCOUNT_LOCKED: ErrorSpec(
+        429, ErrorType.RATE_LIMITED, "Too many failed login attempts"
+    ),
+    ErrorCode.AUTH_INVALID_RESET_TOKEN: ErrorSpec(
+        400, ErrorType.VALIDATION, "Invalid or expired password reset link"
     ),
     ErrorCode.PERMISSION_DENIED: ErrorSpec(403, ErrorType.PERMISSION, "Permission denied"),
     ErrorCode.NOT_FOUND: ErrorSpec(404, ErrorType.NOT_FOUND, "Not found"),

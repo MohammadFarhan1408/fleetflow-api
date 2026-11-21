@@ -86,13 +86,12 @@ def test_throttled_sets_retry_after_rounded_up(api_client: APIClient) -> None:
     assert response["Retry-After"] == "13"
 
 
-def test_unauthenticated_request_is_rejected(api_client: APIClient) -> None:
+def test_unauthenticated_request_is_401_with_bearer_challenge(api_client: APIClient) -> None:
     response = api_client.get("/api/v1/test/protected/")
 
-    # No authentication class is configured until JWT lands (Phase 1 PR 3), so DRF
-    # raises PermissionDenied rather than NotAuthenticated. PR 3 changes this to 401.
-    assert response.status_code == 403
-    assert_envelope(response.json(), 403, "permission.denied")
+    assert response.status_code == 401
+    assert_envelope(response.json(), 401, "auth.not_authenticated")
+    assert response["WWW-Authenticate"].startswith("Bearer")
 
 
 def test_method_not_allowed_is_405(api_client: APIClient) -> None:
@@ -108,6 +107,21 @@ def test_unknown_url_is_json_404() -> None:
     assert response.status_code == 404
     assert response["Content-Type"] == "application/json"
     assert_envelope(response.json(), 404, "not_found")
+
+
+def test_disallowed_host_is_json_400() -> None:
+    response = Client().get("/api/v1/test/domain/", HTTP_HOST="evil.example")
+
+    assert response.status_code == 400
+    assert response["Content-Type"] == "application/json"
+    assert_envelope(response.json(), 400, "request.malformed")
+
+
+def test_django_permission_denied_outside_drf_is_json_403() -> None:
+    response = Client().get("/test/django-forbidden/")
+
+    assert response.status_code == 403
+    assert_envelope(response.json(), 403, "permission.denied")
 
 
 def test_unhandled_api_exception_is_500_without_internals(

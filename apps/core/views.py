@@ -59,6 +59,16 @@ def health_ready(request: HttpRequest) -> JsonResponse:
     )
 
 
+def bad_request(request: HttpRequest, exception: Exception) -> JsonResponse:
+    """Django-level 400, e.g. a disallowed Host header (SuspiciousOperation)."""
+    return JsonResponse(error_payload(ErrorCode.REQUEST_MALFORMED), status=400)
+
+
+def permission_denied(request: HttpRequest, exception: Exception) -> JsonResponse:
+    """Django-level 403 raised outside DRF views."""
+    return JsonResponse(error_payload(ErrorCode.PERMISSION_DENIED), status=403)
+
+
 def not_found(request: HttpRequest, exception: Exception) -> JsonResponse:
     """Django-level 404 (no URL matched), rendered as the API envelope instead of HTML."""
     return JsonResponse(error_payload(ErrorCode.NOT_FOUND), status=404)
