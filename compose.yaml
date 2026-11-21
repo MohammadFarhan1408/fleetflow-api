@@ -1,0 +1,67 @@
+# Local development stack (architecture §24). Not a production deployment.
+x-app: &app
+  build: .
+  env_file: .env
+  environment:
+    DATABASE_URL: postgres://fleetflow:fleetflow@db:5432/fleetflow
+    REDIS_URL: redis://redis:6379/0
+  volumes:
+    - .:/app
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  api:
+    <<: *app
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             uvicorn config.asgi:application --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: celery -A config worker --loglevel=info
+
+  beat:
+    <<: *app
+    # Schedule state lives in /tmp because the bind-mounted source is not the place for it.
+    command: celery -A config beat --loglevel=info --schedule=/tmp/celerybeat-schedule
+
+  db:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_DB: fleetflow
+      POSTGRES_USER: fleetflow
+      POSTGRES_PASSWORD: fleetflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleetflow -d fleetflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8.2-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

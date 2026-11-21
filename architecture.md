@@ -2,7 +2,7 @@
 
 Status legend: **APPROVED** = owner-approved · **PROPOSED** = recommended, awaiting approval · **NEEDS APPROVAL** = open choice, owner must decide · **FUTURE** = not in MVP.
 
-> Nothing in this document is APPROVED yet. Everything below is PROPOSED until the owner reviews Phase 0.
+> The owner approved the Phase 0 docs on 2026-11-22. Items still marked PROPOSED are recommendations that have not been individually approved.
 > Research date: **2026-11-21**. Versions were taken from the PyPI JSON API and package classifiers on that date. Re-verify at Phase 0 kickoff.
 
 ## Table of contents
@@ -48,26 +48,27 @@ It is the **only** place where business rules and permissions are enforced. flee
 | Concern        | Choice                                          | Version (2026-11-21)             | Status         | Notes                                                                                                 |
 | -------------- | ----------------------------------------------- | -------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
 | Language       | Python                                          | 3.13                             | PROPOSED       | Supported by every library below. 3.14 is allowed once all dependencies list it                       |
-| Framework      | Django                                          | **5.2 LTS** (latest is 6.1.3)    | NEEDS APPROVAL | See decision D-API-1                                                                                  |
+| Framework      | Django                                          | **5.2 LTS** (5.2.19 installed)   | APPROVED       | See decision D-API-1                                                                                  |
 | API            | Django REST Framework                           | 3.18.3                           | PROPOSED       | Classifiers cover Django 5.2–6.1                                                                      |
 | OpenAPI        | drf-spectacular                                 | 0.30.0                           | PROPOSED       | Generates the OpenAPI 3 schema that is the contract for admin and driver-app                          |
 | Auth tokens    | djangorestframework-simplejwt                   | 5.5.1                            | PROPOSED       | Classifiers stop at Django 5.2. Another reason for 5.2 LTS                                            |
 | Filtering      | django-filter                                   | 26.2                             | PROPOSED       |                                                                                                       |
-| DB             | PostgreSQL 18 + PostGIS 3.6                     | —                                | PROPOSED       | PostGIS 3.6.x supports PG18 (managed providers ship 3.6.3/3.6.4). Pin the Docker image tag at Phase 0 |
+| DB             | PostgreSQL 18 + PostGIS 3.6                     | image `postgis/postgis:18-3.6`   | PROPOSED       | Plain `postgresql` engine until Phase 2 (memory D-API-8); the extension is enabled by a migration     |
 | DB driver      | psycopg 3                                       | 3.3.9                            | PROPOSED       |                                                                                                       |
 | Cache/broker   | Redis                                           | 7.x/8.x server; `redis` py 8.1.0 | PROPOSED       | Celery broker, cache, rate-limit counters, Channels layer                                             |
 | Jobs           | Celery                                          | 5.7.0                            | PROPOSED       | Celery beat for schedules                                                                             |
 | Realtime       | Django Channels + channels-redis                | 4.3.2 / 4.3.0                    | PROPOSED       | See §17                                                                                               |
 | ASGI server    | uvicorn (behind gunicorn workers or standalone) | 0.54.0 / gunicorn 27.0.1         | PROPOSED       |                                                                                                       |
-| Object storage | S3-compatible via django-storages               | 1.14.6                           | PROPOSED       | Classifiers stop at Django 5.1; verify on 5.2 in Phase 0. MinIO for local development                 |
+| Object storage | S3-compatible via django-storages               | 1.14.6                           | PROPOSED       | Added in Phase 3. Local S3-compatible server chosen then (MinIO images unmaintained, memory D-API-9) |
 | Config         | django-environ                                  | 0.14.0                           | PROPOSED       |                                                                                                       |
 | Logging        | structlog                                       | 26.1.0                           | PROPOSED       | JSON logs                                                                                             |
 | Errors/APM     | sentry-sdk                                      | 2.75.0                           | PROPOSED       | Requires a vendor account. NEEDS APPROVAL for paid tier                                               |
 | Lint/format    | ruff                                            | 0.17.6                           | PROPOSED       |                                                                                                       |
-| Types          | mypy (+ django-stubs)                           | 2.4.1                            | PROPOSED       |                                                                                                       |
-| Containers     | Docker + Compose                                | —                                | PROPOSED       | Development parity: api, worker, beat, postgres-postgis, redis, minio                                 |
+| Types          | mypy (+ django-stubs 5.2.x)                     | 1.19.1                           | PROPOSED       | Held below 2.x by django-stubs 5.2 `compatible-mypy`                                                  |
+| Containers     | Docker + Compose                                | —                                | PROPOSED       | Development parity: api, worker, beat, postgres-postgis, redis (object storage from Phase 3)          |
+| Packaging      | uv                                              | 0.12.1                           | PROPOSED       | `pyproject.toml` + `uv.lock`; also used in Dockerfile and CI (memory D-API-7)                         |
 
-**D-API-1 (NEEDS APPROVAL): Django 5.2 LTS vs 6.1.** Recommendation: 5.2 LTS (security support until April 2028). simplejwt and django-storages declare support only up to 5.2/5.1. DRF, Channels, pytest-django and django-filter all support 5.2. Alternative: 6.1, after confirming the simplejwt and storages CI matrices. Upgrading from 5.2 to 6.x later is a planned Phase 11 or post-MVP task.
+**D-API-1 (APPROVED 2026-11-22): Django 5.2 LTS.** Recommendation: 5.2 LTS (security support until April 2028). simplejwt and django-storages declare support only up to 5.2/5.1. DRF, Channels, pytest-django and django-filter all support 5.2. Alternative: 6.1, after confirming the simplejwt and storages CI matrices. Upgrading from 5.2 to 6.x later is a planned Phase 11 or post-MVP task.
 
 ## 3. Architecture style
 
@@ -171,7 +172,7 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 - Login is rejected for: a disabled user, a suspended company, or a driver without an active driver profile (for the driver app).
 - Brute-force protection: per-IP and per-account login throttles, plus an exponential lockout after N failures (§20).
 - Password reset sends a single-use, time-limited token by email. The response never reveals whether the account exists.
-- **D-API-2 (NEEDS APPROVAL)**: whether the admin uses JWT through the BFF (above, consistent with mobile) or Django session cookies with CSRF. Recommendation: JWT through the BFF, so there is one auth code path in the API.
+- **D-API-2 (APPROVED 2026-11-22)**: the admin uses JWT through the Next.js BFF in httpOnly cookies (consistent with mobile), so there is one auth code path in the API. Rejected alternative: Django session cookies with CSRF.
 
 ## 8. Authorization (RBAC)
 
@@ -305,7 +306,7 @@ Rules:
 
 ## 16. Geospatial & GPS
 
-- PostGIS `geography(Point,4326)` for addresses, stops and pings, with GiST indexes.
+- PostGIS `geography(Point,4326)` for addresses, stops and pings, with GiST indexes. The GeoDjango engine (`django.contrib.gis.db.backends.postgis`, needs GDAL/GEOS) is switched on in Phase 2 with the first geometry field; until then the `core` migration only enables the extension.
 - Queries: shipments or stops within a zone polygon (`ST_Covers`), nearest available driver (`ST_DWithin` plus ordering by distance on last-known location), and distance from a POD to the address.
 - **Ingestion**: the driver app sends batched pings (`POST /api/v1/tracking/pings/`, ≤ 100 points per request) every ~15–30 s while on shift. Each ping has lat, lng, accuracy, speed, heading, `recorded_at` and battery. Validation: lat ∈ [-90, 90], lng ∈ [-180, 180]; reject accuracy > 500 m as an update to last-known location (store it but flag it); dedupe on `(driver, recorded_at)`; reject `recorded_at` more than 5 min in the future.
 - `DriverLocation` (one row per driver: last known) is updated with a "newer recorded_at wins" rule. `LocationPing` is history, partitioned by month (FUTURE: TimescaleDB, if volume requires it).
@@ -369,7 +370,7 @@ OWASP ASVS L2 as the baseline. Specifics: tenant scoping (§9); server-side RBAC
 
 - Environments: `local` (Docker Compose), `test` (CI), `staging`, `production`. Settings modules per environment. All secrets and endpoints come from env vars, and `.env.example` documents each one.
 - Backups (PROPOSED, Phase 11): managed PostgreSQL with point-in-time recovery (7–30 days), daily logical dump to separate storage, object storage versioning on the POD bucket, and a quarterly restore drill. RPO ≤ 15 min, RTO ≤ 4 h (NEEDS APPROVAL).
-- Hosting target: NEEDS APPROVAL (e.g. AWS ECS/RDS, Render or Fly). It does not block Phase 0–1.
+- Hosting target: deferred to Phase 11 (owner decision 2026-11-22, memory D-API-6). Candidates: AWS ECS/RDS, Render or Fly.
 
 ## 25. Cross-app contracts
 

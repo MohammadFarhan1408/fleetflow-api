@@ -1,6 +1,6 @@
 # fleetflow-api: Claude Code Instructions
 
-> **SETUP STAGE. NO IMPLEMENTATION.** Phase 0 (documentation and workspace setup) is in progress and awaiting owner review. Do not initialize Django, install packages, or create source files, models, APIs or tests until the owner approves Phase 0 and explicitly starts work. Documentation edits are allowed.
+> **Phase 0 technical setup is implemented and awaiting owner review.** Do not start Phase 1 (or any domain models, auth or business endpoints) until the owner signs off Phase 0. Check [phases.md](phases.md) for the current phase.
 
 ## Identity
 

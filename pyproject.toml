@@ -1,0 +1,77 @@
+[project]
+name = "fleetflow-api"
+version = "0.1.0"
+description = "FleetFlow backend: Django + DRF modular monolith"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "argon2-cffi",
+    "celery[redis]",
+    "django>=5.2,<5.3",
+    "django-environ",
+    "djangorestframework",
+    "drf-spectacular",
+    "psycopg[binary]",
+    "redis",
+    "uvicorn",
+]
+
+[dependency-groups]
+dev = [
+    "django-stubs[compatible-mypy]>=5.2,<5.3",
+    "djangorestframework-stubs[compatible-mypy]",
+    "mypy",
+    "pip-audit",
+    "pytest",
+    "pytest-cov",
+    "pytest-django",
+    "ruff",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["**/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ", "S", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# assert is the pytest idiom; tests set throwaway secrets for settings checks.
+"**/tests/**" = ["S101", "S105", "S106", "S603"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+exclude = ["/migrations/"]
+
+# These libraries ship no type information and no maintained stubs exist.
+[[tool.mypy.overrides]]
+module = ["celery", "environ"]
+ignore_missing_imports = true
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py"]
+addopts = "--strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = ["apps", "config"]
+omit = [
+    # Generated schema changes, no logic.
+    "*/migrations/*",
+    # Configuration only; exercised by test_settings in subprocesses.
+    "config/settings/*",
+    # Server entry points.
+    "config/asgi.py",
+    "config/wsgi.py",
+    "manage.py",
+]
