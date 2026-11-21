@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 0, IN PROGRESS** (documentation and workspace setup done; awaiting owner review. Technical setup not started.)
+**Current phase: Phase 0, IN PROGRESS** (docs approved; technical setup done on `feature/api-setup`, awaiting owner review and a green CI run.)
 
 ## Ordering and dependencies
 
@@ -34,9 +34,9 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 0: Architecture & Project Setup
 
-- **Status**: IN PROGRESS (docs done; technical setup NOT STARTED, waiting for approval)
+- **Status**: IN PROGRESS (docs approved 2026-11-22; technical setup implemented on `feature/api-setup`, all checks pass locally; CI not yet run)
 - **Goal**: a runnable, empty, well-tooled Django project that matches architecture.md.
-- **Scope / deliverables**: owner decisions on the NEEDS APPROVAL items (Django version D-API-1, admin auth D-API-2, hosting); `pyproject.toml` with pinned dependencies; settings split; Docker Compose (api, worker, beat, postgres-postgis, redis, minio); `.env.example`; ruff and mypy config; pytest plus pytest-django against PostGIS; `/health/live` and `/health/ready`; CI (lint, type check, tests, `makemigrations --check`, `pip-audit`); drf-spectacular serving an empty schema; `apps/core` with base models only.
+- **Scope / deliverables**: owner decisions on the NEEDS APPROVAL items (Django version D-API-1, admin auth D-API-2, hosting: all decided 2026-11-22); `pyproject.toml` with pinned dependencies; settings split; Docker Compose (api, worker, beat, postgres-postgis, redis; object storage moved to Phase 3, see memory D-API-9); `.env.example`; ruff and mypy config; pytest plus pytest-django against PostGIS; `/health/live` and `/health/ready`; CI (lint, type check, tests, `makemigrations --check`, `pip-audit`); drf-spectacular serving an empty schema; `apps/core` with base models only.
 - **Dependencies**: owner approval of these docs.
 - **Acceptance**: `docker compose up` gives healthy services; `/health/ready` returns 200 and shows 503 when the DB is stopped; CI is green on a PR; one smoke test runs against PostGIS (`SELECT postgis_version()`).
 - **Required tests**: health endpoints (up and DB down); settings load per environment; PostGIS extension present.
