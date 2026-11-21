@@ -47,7 +47,7 @@ It is the **only** place where business rules and permissions are enforced. flee
 
 | Concern        | Choice                                          | Version (2026-11-21)             | Status         | Notes                                                                                                 |
 | -------------- | ----------------------------------------------- | -------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------- |
-| Language       | Python                                          | 3.13                             | PROPOSED       | Supported by every library below. 3.14 is allowed once all dependencies list it                       |
+| Language       | Python                                          | 3.14                             | APPROVED       | Owner decision 2026-11-22 (memory D-API-10): stdlib `uuid.uuid7()` for public IDs; all deps have wheels |
 | Framework      | Django                                          | **5.2 LTS** (5.2.19 installed)   | APPROVED       | See decision D-API-1                                                                                  |
 | API            | Django REST Framework                           | 3.18.3                           | PROPOSED       | Classifiers cover Django 5.2–6.1                                                                      |
 | OpenAPI        | drf-spectacular                                 | 0.30.0                           | PROPOSED       | Generates the OpenAPI 3 schema that is the contract for admin and driver-app                          |
