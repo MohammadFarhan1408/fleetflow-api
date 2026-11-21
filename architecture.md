@@ -105,9 +105,9 @@ flowchart LR
 fleetflow-api/
 ├── config/                 # settings/{base,local,test,production}.py, urls, asgi, wsgi, celery
 ├── apps/
-│   ├── core/               # base models (TimeStamped, TenantScoped), pagination, errors, idempotency
+│   ├── core/               # base models (TimeStamped, PublicId), errors, request ID, app version, pagination, idempotency
 │   ├── accounts/           # users, auth, roles, permissions
-│   ├── tenancy/            # companies, branches, tenant context
+│   ├── tenancy/            # companies, branches, tenant context (TenantScopedModel, TenantQuerySet)
 │   ├── customers/          # customers, business accounts, addresses
 │   ├── shipments/          # shipments, items, status machine, tracking events
 │   ├── fleet/              # drivers, vehicles, documents, availability
@@ -132,7 +132,7 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 - Views stay thin: parse, authorize, call a service or selector, serialize.
 - **Services** own all writes, transactions and state transitions. Other apps call a module's services and selectors, never its models' `.save()` directly.
 - Cross-module side effects use `transaction.on_commit` plus Celery tasks or the outbox (§18), not Django signals for business logic.
-- Dependency direction: `core ← tenancy ← accounts ← (customers, fleet) ← shipments ← (dispatch, warehouse, delivery, tracking) ← (reporting, notifications, integrations)`. Cycles are a review failure.
+- Dependency direction: `core ← tenancy ← audit ← accounts ← (customers, fleet) ← shipments ← (dispatch, warehouse, delivery, tracking) ← (reporting, notifications, integrations)`. Cycles are a review failure. `audit` references users only through `settings.AUTH_USER_MODEL` and takes `actor` as an object, so it never imports `accounts`. `TenantScopedModel` lives in `tenancy` (not `core`) because it references `Company`.
 
 ## 6. API conventions
 
@@ -156,7 +156,7 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 }
 ```
 
-- **Documentation**: drf-spectacular serves `/api/schema/` and `/api/docs/` (staff-only outside local). The schema is committed and diffed in CI (§25).
+- **Documentation**: drf-spectacular serves `/api/schema/` and `/api/docs/` only where `API_DOCS_ENABLED` is true (local). There is no staff concept (memory D-API-12), so production serves no docs; clients use the committed schema, which CI regenerates and diffs (§25).
 
 ## 7. Authentication & tokens
 

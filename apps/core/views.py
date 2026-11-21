@@ -6,6 +6,8 @@ from django.db import DatabaseError, connection
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_GET
 
+from apps.core.errors import ErrorCode, error_payload
+
 logger = logging.getLogger(__name__)
 
 # Keeps the readiness probe fast when a dependency hangs instead of refusing.
@@ -55,3 +57,13 @@ def health_ready(request: HttpRequest) -> JsonResponse:
         },
         status=200 if healthy else 503,
     )
+
+
+def not_found(request: HttpRequest, exception: Exception) -> JsonResponse:
+    """Django-level 404 (no URL matched), rendered as the API envelope instead of HTML."""
+    return JsonResponse(error_payload(ErrorCode.NOT_FOUND), status=404)
+
+
+def server_error(request: HttpRequest) -> JsonResponse:
+    """Django-level 500 for exceptions outside DRF views; never includes internals."""
+    return JsonResponse(error_payload(ErrorCode.SERVER_ERROR), status=500)
