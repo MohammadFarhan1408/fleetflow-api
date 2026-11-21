@@ -167,10 +167,15 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 | Public tracking      | Opaque, unguessable tracking token per shipment (≥128-bit). Read-only, limited fields, revocable                                                                                      |
 | Integrations         | Per-company API keys, hashed at rest and scoped (FUTURE, Phase 9)                                                                                                                     |
 
-- Refresh rotation plus a blacklist (simplejwt `token_blacklist`). Reuse of a rotated refresh token revokes the whole token family.
-- Logout blacklists the refresh token. Access tokens expire naturally (short TTL).
+- **Sessions (implemented Phase 1)**:
+  - Each login creates a `TokenFamily` (one per device), and every token carries its ID in the `fam` claim.
+  - Refresh tokens rotate on every use. Each one is tracked by `jti` in `RefreshTokenRecord`; the token itself is never stored, so a database read cannot be replayed as a session. simplejwt is used only to sign and verify tokens; its `token_blacklist` app is not installed, because it stores full tokens.
+  - Presenting a rotated refresh token within **30 s** returns a fresh pair in the same family. This covers lost responses and concurrent refreshes on mobile networks. After 30 s it is treated as theft: the family is revoked and the event audited as `auth.refresh_reuse`.
+  - Authentication loads the user *through* a non-revoked family, in one query. So logout (that device only), reuse detection and password reset (all devices) end access tokens immediately, not after their 15-minute lifetime.
+  - Disabled users (`auth.user_disabled`) and suspended companies (`auth.company_suspended`) are rejected on every request.
+  - A daily Celery beat task purges expired token records.
 - Login is rejected for: a disabled user, a suspended company, or a driver without an active driver profile (for the driver app).
-- Brute-force protection: per-IP and per-account login throttles, plus an exponential lockout after N failures (§20).
+- Brute-force protection: a per-IP+email login throttle, plus a cross-IP lockout per email (§20). Lockout counts unknown emails too, so it never reveals which accounts exist. Login answers `auth.user_disabled` and `auth.company_suspended` only after the password is verified.
 - Password reset sends a single-use, time-limited token by email. The response never reveals whether the account exists.
 - **D-API-2 (APPROVED 2026-11-22)**: the admin uses JWT through the Next.js BFF in httpOnly cookies (consistent with mobile), so there is one auth code path in the API. Rejected alternative: Django session cookies with CSRF.
 
@@ -344,7 +349,8 @@ Rules:
 
 - `Idempotency-Key` header is **required** on all driver-app mutations and on shipment creation; it is optional elsewhere. Stored `(company, user, key) → request hash, response, status` for 72 h. Same key plus a different payload → 422 `idempotency.key_reuse`.
 - Concurrency: `select_for_update` for state transitions and assignments, plus optimistic `version` integers on routes and stops (409 on stale version). This is what the dispatch board uses for concurrent edits.
-- Rate limits (DRF throttles backed by Redis, PROPOSED values): login 5/min per IP+username, OTP verify 5/shipment total plus 10/min per driver, OTP resend 3/h, pings 6/min per driver, public tracking 60/min per IP, general authenticated 600/min per user.
+- **Login lockout (implemented Phase 1)**: 10 failures for one email within 15 min, from any IP, lock that email for 15 min (`429 auth.account_locked` with `Retry-After`). Each repeat lock doubles, up to 24 h; the streak resets after 24 h without a lock. State lives in Redis, keyed by a hash of the email. Known trade-off: anyone can temporarily lock a victim's login; the per-IP throttle limits the rate.
+- Rate limits (DRF throttles backed by Redis; login, refresh, password reset and general authenticated limits implemented in Phase 1): login 5/min per IP+email, refresh 30/min per IP, password reset 3/h per email and 10/h per IP, OTP verify 5/shipment total plus 10/min per driver, OTP resend 3/h, pings 6/min per driver, public tracking 60/min per IP, general authenticated 600/min per user.
 
 ## 21. Errors, logging, observability
 
@@ -384,6 +390,8 @@ fleetflow-api **owns** every contract. Admin and driver-app must not invent fiel
 | Realtime event names and payloads                                                                   | `realtime/events.py` registry plus a documented table in this file (added in Phase 7) |
 | Upload flow                                                                                         | §19                                                                                   |
 | Idempotency semantics                                                                               | §20                                                                                   |
+
+**Changelog**: [CHANGELOG.md](CHANGELOG.md) is the contract changelog. Phase 1 added the auth endpoints, `/me`, the auth error codes and the 426 app-version rule.
 
 **Strategy (PROPOSED, implement in Phase 1 of the clients):** CI on fleetflow-api fails if `schema.yaml` changes without a `CHANGELOG` entry tagged `api-breaking` or `api-additive`. Each client generates typed clients and types from the published schema (e.g. `openapi-typescript` plus a thin fetch wrapper, or `orval` with TanStack Query hooks, NEEDS APPROVAL at admin Phase 0) and pins the schema version it was built against. Every contract change is recorded in this file's changelog section and in the affected app's `memory.md`.
 
