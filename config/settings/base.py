@@ -20,26 +20,30 @@ REDIS_URL = env.str("REDIS_URL")
 DEBUG = False
 ALLOWED_HOSTS: list[str] = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
+# No Django admin, sessions or messages: the API authenticates with JWT only and has no
+# server-rendered UI, so those apps would only add attack surface (memory D-API-12).
 INSTALLED_APPS = [
-    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
-    "django.contrib.sessions",
-    "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
     "drf_spectacular",
     "apps.core",
+    "apps.tenancy",
+    "apps.audit",
+    "apps.accounts",
 ]
 
+AUTH_USER_MODEL = "accounts.User"
+
 MIDDLEWARE = [
+    # First, so every response (including early rejections below) carries the request ID.
+    "apps.core.middleware.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
-    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
-    "django.contrib.auth.middleware.AuthenticationMiddleware",
-    "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.core.middleware.AppVersionMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -52,11 +56,7 @@ TEMPLATES = [
         "DIRS": [],
         "APP_DIRS": True,
         "OPTIONS": {
-            "context_processors": [
-                "django.template.context_processors.request",
-                "django.contrib.auth.context_processors.auth",
-                "django.contrib.messages.context_processors.messages",
-            ],
+            "context_processors": ["django.template.context_processors.request"],
         },
     },
 ]
@@ -87,17 +87,40 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # JWT authentication arrives in Phase 1 PR 3. Until then nothing authenticates, which
+    # also removes DRF's implicit Session and Basic authentication defaults.
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
     # Deny by default; every endpoint opts in to its access rules.
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
+    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
+    "EXCEPTION_HANDLER": "apps.core.exception_handler.exception_handler",
+    # DRF's default (None) trusts the whole X-Forwarded-For header, which clients can
+    # spoof. Set this to the number of trusted proxies in front of the app.
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
 }
+
+# Interactive docs are served only where explicitly enabled (local). Clients consume the
+# committed openapi/schema.yaml (architecture §25), so production needs no docs endpoint.
+API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=False)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "FleetFlow API",
     "VERSION": "0.1.0",
     "SERVE_INCLUDE_SCHEMA": False,
-    # Schema and docs are staff-only outside local (architecture §6).
-    "SERVE_PERMISSIONS": ["rest_framework.permissions.IsAdminUser"],
+    "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
 }
+
+# Email: console locally; production must set EMAIL_URL (e.g. smtp+tls://user:pass@host:587).
+EMAIL_CONFIG = env.email_url("EMAIL_URL", default="consolemail://")
+vars().update(EMAIL_CONFIG)
+DEFAULT_FROM_EMAIL = env.str("DEFAULT_FROM_EMAIL", default="FleetFlow <no-reply@localhost>")
+
+# Page in fleetflow-admin that completes password set/reset; the API appends uid and token.
+PASSWORD_RESET_URL = env.str("PASSWORD_RESET_URL", default="http://localhost:3000/reset-password")
+
+# Minimum driver-app version (e.g. "1.4.0"); empty disables the 426 check.
+DRIVER_APP_MIN_VERSION = env.str("DRIVER_APP_MIN_VERSION", default="")
 
 CELERY_BROKER_URL = REDIS_URL
 CELERY_TASK_ACKS_LATE = True

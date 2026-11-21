@@ -12,6 +12,9 @@ REQUIRED_ENV = {
     "DATABASE_URL": "postgres://user:pass@localhost:5432/fleetflow",
     "REDIS_URL": "redis://localhost:6379/0",
     "DJANGO_ALLOWED_HOSTS": "api.example.com",
+    "EMAIL_URL": "smtp+tls://mailer:secret@smtp.example.com:587",
+    "DEFAULT_FROM_EMAIL": "FleetFlow <no-reply@example.com>",
+    "PASSWORD_RESET_URL": "https://admin.example.com/reset-password",
 }
 
 PRINT_DEBUG = "from django.conf import settings; print(settings.DEBUG)"
@@ -55,10 +58,26 @@ def test_production_fails_fast_without_required_env(missing: str) -> None:
     assert "ImproperlyConfigured" in result.stderr
 
 
-def test_production_requires_allowed_hosts() -> None:
-    env = {k: v for k, v in REQUIRED_ENV.items() if k != "DJANGO_ALLOWED_HOSTS"}
+@pytest.mark.parametrize(
+    "missing",
+    ["DJANGO_ALLOWED_HOSTS", "EMAIL_URL", "DEFAULT_FROM_EMAIL", "PASSWORD_RESET_URL"],
+)
+def test_production_requires_its_own_settings(missing: str) -> None:
+    env = {k: v for k, v in REQUIRED_ENV.items() if k != missing}
 
     result = run_with_settings("config.settings.production", env)
 
     assert result.returncode != 0
     assert "ImproperlyConfigured" in result.stderr
+
+
+def test_local_settings_do_not_need_production_only_values() -> None:
+    env = {
+        k: v
+        for k, v in REQUIRED_ENV.items()
+        if k in {"DJANGO_SECRET_KEY", "DATABASE_URL", "REDIS_URL"}
+    }
+
+    result = run_with_settings("config.settings.local", env)
+
+    assert result.returncode == 0, result.stderr
