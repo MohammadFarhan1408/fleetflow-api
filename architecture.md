@@ -184,6 +184,7 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 - Roles are per company: `owner`, `admin`, `ops_manager`, `dispatcher`, `fleet_manager`, `warehouse_staff`, `finance`, `customer_service`, `driver`, `viewer`. Custom roles are FUTURE.
 - Permissions are codenames like `shipments.create` or `dispatch.assign_driver`. Roles map to permission sets in the DB, seeded by a data migration.
 - **Branch scope**: users can be limited to branches. Selectors filter by the user's branch set unless they have the `*.all_branches` permission.
+- **Implementation (Phase 1)**: views declare `required_permissions = {method: codename}` and use `HasRequiredPermission` after `IsAuthenticated`. An implemented but unmapped method is denied; an unimplemented one gets 405. Effective permissions are loaded once per request and never cached across requests.
 - **Object rules** live in DRF permission classes plus service-level checks (defence in depth). For example, a driver can only touch stops on routes assigned to them.
 - Every check is server-side. The client UI hides actions as a convenience only.
 
@@ -347,6 +348,12 @@ Rules:
 
 ## 20. Idempotency, concurrency, rate limiting
 
+- **Implementation (Phase 1)**: `@idempotent` on a view method (`apps/core/idempotency.py`), not Django middleware, because the JWT user is known only inside DRF.
+  - `IdempotencyRecord(user, key, request_hash, status_code, response_body)` with `UNIQUE(user, key)`. The user fixes the company.
+  - It is written in the same transaction as the mutation. Only successful responses are stored; an error rolls the record back, so the client can retry with the same key.
+  - A concurrent duplicate waits on the unique index, then replays.
+  - Replays carry `Idempotent-Replayed: true`. A daily beat task purges records older than 72 h.
+  - The decorator is optional when the header is absent; later phases make it required for driver mutations and shipment creation.
 - `Idempotency-Key` header is **required** on all driver-app mutations and on shipment creation; it is optional elsewhere. Stored `(company, user, key) → request hash, response, status` for 72 h. Same key plus a different payload → 422 `idempotency.key_reuse`.
 - Concurrency: `select_for_update` for state transitions and assignments, plus optimistic `version` integers on routes and stops (409 on stale version). This is what the dispatch board uses for concurrent edits.
 - **Login lockout (implemented Phase 1)**: 10 failures for one email within 15 min, from any IP, lock that email for 15 min (`429 auth.account_locked` with `Retry-After`). Each repeat lock doubles, up to 24 h; the streak resets after 24 h without a lock. State lives in Redis, keyed by a hash of the email. Known trade-off: anyone can temporarily lock a victim's login; the per-IP throttle limits the rate.
@@ -433,7 +440,7 @@ fleetflow-api **owns** every contract. Admin and driver-app must not invent fiel
 | Security         | auth, rate limits, uploads                   | brute force → 429, malicious file rejected                               |
 | Performance      | p95 and query counts                         | `django_assert_max_num_queries(N)` on list endpoints; locust in Phase 11 |
 
-**Tenant isolation sweep (mandatory)**: a test enumerates every URL pattern under `/api/v1/` and, using fixtures for company A's objects, calls each detail/update/delete route as a company B admin. It asserts 404 and no data in the body. A new endpoint without a fixture fails the test. That is deliberate.
+**Tenant isolation sweep (mandatory, implemented in `tests/test_tenant_sweep.py`)**: a test enumerates every URL pattern under `/api/v1/` and, using fixtures for company A's objects, calls each detail/update/delete route as a company B admin. It asserts 404 and no data in the body. A new endpoint without a fixture fails the test. That is deliberate.
 
 ### 26.3 Coverage policy (PROPOSED)
 
