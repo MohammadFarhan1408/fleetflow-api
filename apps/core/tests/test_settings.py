@@ -9,7 +9,7 @@ import pytest
 
 REQUIRED_ENV = {
     "DJANGO_SECRET_KEY": "test-only-secret",
-    "JWT_SIGNING_KEY": "test-only-jwt-key",
+    "JWT_SIGNING_KEY": "test-only-jwt-signing-key-32-chars-min",
     "DATABASE_URL": "postgres://user:pass@localhost:5432/fleetflow",
     "REDIS_URL": "redis://localhost:6379/0",
     "DJANGO_ALLOWED_HOSTS": "api.example.com",
@@ -72,6 +72,15 @@ def test_production_requires_its_own_settings(missing: str) -> None:
 
     assert result.returncode != 0
     assert "ImproperlyConfigured" in result.stderr
+
+
+def test_production_rejects_short_jwt_signing_key() -> None:
+    result = run_with_settings(
+        "config.settings.production", {**REQUIRED_ENV, "JWT_SIGNING_KEY": "short"}
+    )
+
+    assert result.returncode != 0
+    assert "JWT_SIGNING_KEY must be at least 32 characters" in result.stderr
 
 
 def test_local_settings_do_not_need_production_only_values() -> None:

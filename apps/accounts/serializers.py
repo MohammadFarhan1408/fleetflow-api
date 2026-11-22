@@ -2,6 +2,8 @@ from typing import Any
 
 from rest_framework import serializers
 
+from apps.accounts.models import RoleCode, User
+
 # Generous but bounded: hashing arbitrarily long input is a cheap denial-of-service vector.
 PASSWORD_MAX_LENGTH = 256
 
@@ -54,3 +56,56 @@ class MeSerializer(serializers.Serializer[dict[str, Any]]):
     branches = MeBranchSerializer(many=True)
     roles = serializers.ListField(child=serializers.CharField())
     permissions = serializers.ListField(child=serializers.CharField())
+
+
+class UserBranchSerializer(serializers.Serializer[dict[str, Any]]):
+    public_id = serializers.UUIDField()
+    name = serializers.CharField()
+
+
+class UserSerializer(serializers.ModelSerializer[User]):
+    """A company member as returned by the users API. Explicit fields only (rules.md §2)."""
+
+    roles = serializers.SerializerMethodField()
+    branches = UserBranchSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "public_id",
+            "email",
+            "full_name",
+            "is_active",
+            "roles",
+            "branches",
+            "last_login",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_roles(self, user: User) -> list[str]:
+        # Reads the prefetched roles; sorted for a stable contract.
+        return sorted(role.code for role in user.roles.all())
+
+
+class UserInviteSerializer(serializers.Serializer[dict[str, Any]]):
+    email = serializers.EmailField()
+    full_name = serializers.CharField(max_length=200)
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=RoleCode.choices), min_length=1, max_length=10
+    )
+    branches = serializers.ListField(
+        child=serializers.UUIDField(), required=False, default=list, max_length=100
+    )
+
+
+class UserUpdateSerializer(serializers.Serializer[dict[str, Any]]):
+    full_name = serializers.CharField(max_length=200, required=False)
+    roles = serializers.ListField(
+        child=serializers.ChoiceField(choices=RoleCode.choices),
+        min_length=1,
+        max_length=10,
+        required=False,
+    )
+    branches = serializers.ListField(child=serializers.UUIDField(), required=False, max_length=100)
+    is_active = serializers.BooleanField(required=False)

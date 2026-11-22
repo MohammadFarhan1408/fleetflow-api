@@ -196,6 +196,188 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/users/:
+    get:
+      operationId: users_list
+      description: List the company's users (`users.view`) or invite a new one (`users.manage`).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - users
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedUserList'
+          description: ''
+    post:
+      operationId: users_create
+      description: List the company's users (`users.view`) or invite a new one (`users.manage`).
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserInvite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/users/{public_id}/:
+    get:
+      operationId: users_retrieve
+      description: Read (`users.view`) or update (`users.manage`) one user of the
+        company.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - users
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    patch:
+      operationId: users_partial_update
+      description: Read (`users.view`) or update (`users.manage`) one user of the
+        company.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - users
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
     Error:
@@ -299,6 +481,25 @@ components:
       - email
       - full_name
       - public_id
+    PaginatedUserList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
     PasswordResetConfirm:
       type: object
       properties:
@@ -323,6 +524,26 @@ components:
           format: email
       required:
       - email
+    PatchedUserUpdate:
+      type: object
+      properties:
+        full_name:
+          type: string
+          maxLength: 200
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RolesEnum'
+          maxItems: 10
+          minItems: 1
+        branches:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 100
+        is_active:
+          type: boolean
     RefreshToken:
       type: object
       properties:
@@ -330,6 +551,30 @@ components:
           type: string
       required:
       - refresh
+    RolesEnum:
+      enum:
+      - owner
+      - admin
+      - ops_manager
+      - dispatcher
+      - fleet_manager
+      - warehouse_staff
+      - finance
+      - customer_service
+      - driver
+      - viewer
+      type: string
+      description: |-
+        * `owner` - Owner
+        * `admin` - Admin
+        * `ops_manager` - Operations manager
+        * `dispatcher` - Dispatcher
+        * `fleet_manager` - Fleet manager
+        * `warehouse_staff` - Warehouse staff
+        * `finance` - Finance
+        * `customer_service` - Customer service
+        * `driver` - Driver
+        * `viewer` - Viewer
     TokenPair:
       type: object
       properties:
@@ -340,6 +585,89 @@ components:
       required:
       - access
       - refresh
+    User:
+      type: object
+      description: A company member as returned by the users API. Explicit fields
+        only (rules.md §2).
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        roles:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserBranch'
+          readOnly: true
+        last_login:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - branches
+      - created_at
+      - email
+      - full_name
+      - is_active
+      - last_login
+      - public_id
+      - roles
+    UserBranch:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - name
+      - public_id
+    UserInvite:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+          maxLength: 200
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/RolesEnum'
+          maxItems: 10
+          minItems: 1
+        branches:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 100
+      required:
+      - email
+      - full_name
+      - roles
   securitySchemes:
     jwtAuth:
       type: http

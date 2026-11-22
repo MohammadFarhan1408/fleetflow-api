@@ -40,6 +40,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the changelog gate diffs against the PR base
       - uses: astral-sh/setup-uv@v6
         with:
           version: "0.12.1"
@@ -51,11 +53,26 @@ jobs:
         run: uv run mypy .
       - name: Migrations are up to date
         run: uv run python manage.py makemigrations --check --dry-run
-      - name: Tests
-        run: uv run pytest --cov --cov-report=term-missing
+      - name: Tests (overall coverage floor 85 %)
+        run: uv run pytest --cov --cov-report=term-missing --cov-fail-under=85
+      - name: Coverage of security-critical code (architecture §26.3, 95 % branch)
+        run: >-
+          uv run coverage report --fail-under=95
+          --include="apps/*/services.py,apps/*/permissions.py,apps/*/selectors.py,apps/accounts/authentication.py,apps/accounts/lockout.py,apps/accounts/tokens.py,apps/core/idempotency.py"
       - name: Dependency audit
         run: uv run pip-audit
       - name: OpenAPI schema is committed and current
         run: |
           uv run python manage.py spectacular --file openapi/schema.yaml --validate --fail-on-warn
           git diff --exit-code openapi/schema.yaml
+      - name: Contract changes have a changelog entry (architecture §25)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: origin/${{ github.base_ref }}
+        run: |
+          if git diff --name-only "$BASE"...HEAD | grep -qx 'openapi/schema.yaml'; then
+            git diff "$BASE"...HEAD -- CHANGELOG.md | grep -qE '^\+.*(api-additive|api-breaking)' || {
+              echo "::error::openapi/schema.yaml changed: add a CHANGELOG.md entry tagged api-additive or api-breaking"
+              exit 1
+            }
+          fi

@@ -100,6 +100,7 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
     "EXCEPTION_HANDLER": "apps.core.exception_handler.exception_handler",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.PublicIdCursorPagination",
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.UserRateThrottle"],
     # Architecture §20. Scoped rates apply to the auth endpoints that name them.
     "DEFAULT_THROTTLE_RATES": {
@@ -164,6 +165,10 @@ CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_BEAT_SCHEDULE = {
+    "purge-idempotency-records": {
+        "task": "apps.core.tasks.purge_idempotency_records",
+        "schedule": timedelta(days=1),
+    },
     "purge-expired-refresh-tokens": {
         "task": "apps.accounts.tasks.purge_expired_refresh_tokens",
         "schedule": timedelta(days=1),
