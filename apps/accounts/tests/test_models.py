@@ -68,6 +68,12 @@ def test_user_for_company_is_tenant_scoped() -> None:
     assert list(User.objects.for_company(mine.company)) == [mine]
 
 
+USERS = {"users.view", "users.manage"}
+CUSTOMERS = {"customers.view", "customers.manage"}
+SHIPMENTS_OWN_BRANCHES = {"shipments.view", "shipments.create"}
+SHIPMENTS_ALL = {*SHIPMENTS_OWN_BRANCHES, "shipments.all_branches"}
+
+
 def test_all_builtin_roles_are_seeded() -> None:
     assert set(Role.objects.values_list("code", flat=True)) == set(RoleCode.values)
 
@@ -75,16 +81,16 @@ def test_all_builtin_roles_are_seeded() -> None:
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
-        # Phase 1 users permissions; customers permissions per memory D-API-21.
-        (RoleCode.OWNER, {"users.view", "users.manage", "customers.view", "customers.manage"}),
-        (RoleCode.ADMIN, {"users.view", "users.manage", "customers.view", "customers.manage"}),
-        (RoleCode.OPS_MANAGER, {"users.view", "customers.view", "customers.manage"}),
-        (RoleCode.DISPATCHER, {"customers.view"}),
-        (RoleCode.CUSTOMER_SERVICE, {"customers.view", "customers.manage"}),
-        (RoleCode.FINANCE, {"customers.view"}),
-        (RoleCode.VIEWER, {"customers.view"}),
-        (RoleCode.WAREHOUSE_STAFF, set()),
-        (RoleCode.FLEET_MANAGER, set()),
+        # Phase 1 users permissions; customers and shipments permissions per D-API-21.
+        (RoleCode.OWNER, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL}),
+        (RoleCode.ADMIN, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL}),
+        (RoleCode.OPS_MANAGER, {"users.view", *CUSTOMERS, *SHIPMENTS_ALL}),
+        (RoleCode.DISPATCHER, {"customers.view", *SHIPMENTS_OWN_BRANCHES}),
+        (RoleCode.CUSTOMER_SERVICE, {*CUSTOMERS, *SHIPMENTS_OWN_BRANCHES}),
+        (RoleCode.FINANCE, {"customers.view", "shipments.view"}),
+        (RoleCode.VIEWER, {"customers.view", "shipments.view"}),
+        (RoleCode.WAREHOUSE_STAFF, {"shipments.view"}),
+        (RoleCode.FLEET_MANAGER, {"shipments.view"}),
         (RoleCode.DRIVER, set()),
     ],
 )

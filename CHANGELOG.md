@@ -4,6 +4,35 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: shipments (Phase 2 PR 2)
+
+- **Shipment list.** `GET /api/v1/shipments/` (`shipments.view`): cursor-paginated, newest first. Users see only their own branches unless they hold `shipments.all_branches`.
+  - Each row: `public_id`, `tracking_number`, `status`, `priority`, `branch{public_id,code}`, `customer{public_id,name}`, `service_type` (code), `scheduled_pickup_date`, `external_reference`, `total_weight_kg`, `created_at`, `updated_at`.
+  - Filters: `status` (repeatable), `branch`, `customer` (public IDs), `service_type` (code), `priority`, `created_after` (inclusive), `created_before` (exclusive), `search` (case-insensitive prefix of the tracking number or external reference). An invalid filter answers 400.
+- **Create.** `POST /api/v1/shipments/` (`shipments.create`). The `Idempotency-Key` header is **required**.
+  - Body: `branch_id`, `customer_id` (the sender), `service_type` (code), `pickup`, `delivery`, `items[]` (1–500), optional `priority` (`normal` default, `high`, `urgent`), `scheduled_pickup_date`, `external_reference`, `draft` (default false).
+  - `pickup` and `delivery` are each `{"address_id": "<address-book public ID>"}` or an inline address (`contact_name` required, `phone`, `line1`, `line2`, `city`, `region`, `postal_code`, `country`, optional `latitude`/`longitude`). Either way the shipment keeps its own copy; later address-book edits do not change it.
+  - Each item (one parcel): `weight_kg`, `length_cm`, `width_cm`, `height_cm` (decimal strings), optional `description`. Each parcel must fit the service type's limits; the total weight must be above 0 and at most 30,000 kg.
+  - → `201` with the detail body. Status is `created`, or `draft` with `"draft": true`.
+- **Detail.** `GET /api/v1/shipments/{public_id}/` (`shipments.view`): the list fields plus `tracking_token`, `pickup`, `delivery` (with `geocode_confidence` and `source_address_id`) and `items[]` (with `barcode`, `<tracking_number>-001` onwards).
+- **Drafts.** `PATCH /api/v1/shipments/{public_id}/` (`shipments.create`, optional `Idempotency-Key`): any create field except `draft`; `items` replaces all parcels; moving to another branch issues a new tracking number. `DELETE` → `204`. Both answer 409 `shipment.not_draft` for any other status.
+- **Tracking token.** `POST /api/v1/shipments/{public_id}/tracking-token/` (`shipments.create`) → `200 {tracking_token}`. The old token stops working. The public tracking endpoint arrives in PR 3.
+- **Enums:** `ShipmentStatusEnum` (all 12 lifecycle statuses from architecture §11; only `draft` and `created` occur until PR 3) and `ShipmentPriorityEnum`.
+- **New error codes:**
+  - `idempotency.key_required` (400)
+  - `customer.inactive` (400: archived sender)
+  - `shipment.invalid_weight` (400: a parcel weight ≤ 0 or a total over 30,000 kg)
+  - `shipment.unsupported_type` (400: unknown or inactive service type)
+  - `shipment.past_schedule` (400: date before today in the company timezone)
+  - `shipment.duplicate_reference` (409)
+  - `shipment.not_draft` (409)
+  - Unknown or another company's `branch_id`, `customer_id` or `address_id` answer `validation.invalid_reference` (400). Parcels over the service-type limits answer `validation.invalid` with errors keyed by item index.
+- **New permissions in `/me`:**
+  - `shipments.view`: every role except driver
+  - `shipments.create`: owner, admin, ops_manager, dispatcher, customer_service
+  - `shipments.all_branches`: owner, admin, ops_manager
+- **Onboarding (not an API change):** the `create_company` command now requires `--branch-name` and `--branch-code` and makes the owner a member of that first branch.
+
 ### api-additive: customers and address book (Phase 2 PR 1)
 
 - **Customers.** Each response has `public_id`, `kind` (`individual` or `business`), `name`, `email`, `phone`, `archived_at`, `created_at` and `updated_at`.

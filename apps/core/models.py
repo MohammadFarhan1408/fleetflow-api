@@ -1,4 +1,5 @@
 import uuid
+from typing import Any, NoReturn
 
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
@@ -46,3 +47,32 @@ class IdempotencyRecord(models.Model):
 
     def __str__(self) -> str:
         return self.key
+
+
+class AppendOnlyError(Exception):
+    pass
+
+
+class AppendOnlyQuerySet[M: models.Model](models.QuerySet[M]):
+    """Blocks bulk updates and deletes on append-only tables (rules.md §2)."""
+
+    def update(self, **kwargs: Any) -> NoReturn:
+        raise AppendOnlyError(f"{self.model.__name__} rows cannot be updated.")
+
+    def delete(self) -> NoReturn:
+        raise AppendOnlyError(f"{self.model.__name__} rows cannot be deleted.")
+
+
+class AppendOnlyModel(models.Model):
+    """Rows can be inserted, never changed or removed. Pair with AppendOnlyQuerySet."""
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        if not self._state.adding:
+            raise AppendOnlyError(f"{type(self).__name__} rows cannot be updated.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args: Any, **kwargs: Any) -> NoReturn:
+        raise AppendOnlyError(f"{type(self).__name__} rows cannot be deleted.")

@@ -12,7 +12,7 @@ from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode, User
 from apps.accounts.tasks import send_invite_email
 from apps.audit.models import AuditAction, AuditLog
-from apps.tenancy.models import Company, ServiceType
+from apps.tenancy.models import Branch, Company, ServiceType
 
 pytestmark = pytest.mark.django_db
 
@@ -25,6 +25,8 @@ def run(**options: str) -> None:
         name=options.get("name", "Acme Logistics"),
         currency=options.get("currency", "eur"),
         timezone=options.get("timezone", "Europe/Berlin"),
+        branch_name=options.get("branch_name", "Berlin Hub"),
+        branch_code=options.get("branch_code", "ber1"),
         owner_email=options.get("owner_email", "Owner@Acme.example"),
         owner_name=options.get("owner_name", "Olivia Owner"),
     )
@@ -44,6 +46,9 @@ def test_creates_company_owner_audit_and_invite(
     assert owner.company == company
     assert list(owner.roles.values_list("code", flat=True)) == [RoleCode.OWNER]
     assert owner.has_usable_password() is False
+    branch = Branch.objects.for_company(company).get()
+    assert (branch.name, branch.code) == ("Berlin Hub", "BER1")
+    assert list(owner.branches.all()) == [branch]
 
     actions = set(AuditLog.objects.filter(company=company).values_list("action", flat=True))
     assert actions == {AuditAction.COMPANY_CREATED, AuditAction.USER_CREATED}
@@ -78,18 +83,38 @@ def test_blank_company_name_is_rejected() -> None:
 
 @pytest.mark.parametrize(
     "options",
-    [{"currency": "XYZ"}, {"currency": "EURO"}, {"timezone": "Mars/Base"}, {"timezone": "utc"}],
+    [
+        {"currency": "XYZ"},
+        {"currency": "EURO"},
+        {"timezone": "Mars/Base"},
+        {"timezone": "utc"},
+        {"branch_code": "B"},
+        {"branch_code": "NY-1"},
+        {"branch_name": "  "},
+    ],
 )
-def test_invalid_currency_or_timezone_is_rejected(options: dict[str, str]) -> None:
+def test_invalid_company_settings_are_rejected(options: dict[str, str]) -> None:
     with pytest.raises(CommandError):
         run(**options)
 
     assert not Company.objects.filter(name="Acme Logistics").exists()
 
 
-def test_currency_and_timezone_are_required() -> None:
-    with pytest.raises(CommandError, match="--currency"):
-        call_command("create_company", "--name=Acme", "--owner-email=o@a.example", "--owner-name=O")
+@pytest.mark.parametrize("missing", ["--currency", "--timezone", "--branch-name", "--branch-code"])
+def test_company_settings_are_required(missing: str) -> None:
+    arguments = {
+        "--name": "Acme",
+        "--currency": "EUR",
+        "--timezone": "UTC",
+        "--branch-name": "Main",
+        "--branch-code": "MAIN",
+        "--owner-email": "o@a.example",
+        "--owner-name": "O",
+    }
+    del arguments[missing]
+
+    with pytest.raises(CommandError, match=missing):
+        call_command("create_company", *(f"{flag}={value}" for flag, value in arguments.items()))
 
 
 def test_invite_not_sent_to_deactivated_user() -> None:

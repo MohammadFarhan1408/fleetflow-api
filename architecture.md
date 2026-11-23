@@ -184,6 +184,7 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 - Roles are per company: `owner`, `admin`, `ops_manager`, `dispatcher`, `fleet_manager`, `warehouse_staff`, `finance`, `customer_service`, `driver`, `viewer`. Custom roles are FUTURE.
 - Permissions are codenames like `shipments.create` or `dispatch.assign_driver`. Roles map to permission sets in the DB, seeded by a data migration.
 - **Branch scope**: users can be limited to branches. Selectors filter by the user's branch set unless they have the `*.all_branches` permission.
+- **Branch scope (Phase 2)**: `shipments.selectors.shipments_for_user` and `branches_for_user` apply it for shipments (`shipments.all_branches`). Routes reuse the rule in Phase 4.
 - **Implementation (Phase 1)**: views declare `required_permissions = {method: codename}` and use `HasRequiredPermission` after `IsAuthenticated`. An implemented but unmapped method is denied; an unimplemented one gets 405. Effective permissions are loaded once per request and never cached across requests.
 - **Object rules** live in DRF permission classes plus service-level checks (defence in depth). For example, a driver can only touch stops on routes assigned to them.
 - Every check is server-side. The client UI hides actions as a convenience only.
@@ -239,6 +240,7 @@ Principles:
 - Addresses store normalized fields plus `location` (PostGIS `PointField`, SRID 4326) and a geocode-confidence field.
 - **Company settings (Phase 2)**: `Company.currency` (ISO 4217, validated against the circulating-currency list) and `Company.timezone` (IANA). `Branch.code` (2–10 uppercase letters or digits, unique per company) feeds tracking numbers. `ServiceType` (per company: code, name, per-parcel max weight in kg and max L × W × H in cm) lives in `tenancy` because company creation seeds it and `tenancy` cannot import higher modules (§5). Defaults: `standard` and `express` (30 kg, 120 × 80 × 80 cm), `freight` (1000 kg, 240 × 120 × 220 cm).
 - **Customers (Phase 2)**: `Customer` (`individual` or `business`; name, optional email and E.164 phone) and `Address` (an address-book entry with an E.164 phone, an ISO 3166-1 alpha-2 country and a free-text postal code). Both are archived through `archived_at`; archiving a customer archives its addresses. An address has a `location` exactly when `geocode_confidence` is `manual` (a DB check). No geocoding provider is used (memory D-API-18).
+- **Shipments (Phase 2)**: `Shipment` belongs to one origin branch and one sender customer and has a per-company service type, a tracking number `FF-<BRANCH>-<seq>` (from a per-branch counter row locked while issuing, unique per company), a 128-bit public tracking token (unique, rotatable, shown to staff), priority, optional scheduled pickup date and optional external reference (unique per company). `ShipmentItem` is one parcel with barcode `<tracking number>-NNN`. Pickup and delivery are immutable `ShipmentAddress` rows sharing the address-book fields (`PostalAddress`), copied from an address-book entry or typed in. Drafts get a tracking number but no tracking event until they are confirmed (memory D-API-23).
 - **Migrations**: one migration per PR per app where possible. No edits to applied migrations. Data migrations are separate from schema migrations. Large tables follow expand → backfill (Celery, batched) → contract. CI runs `makemigrations --check`.
 
 ## 11. Shipment lifecycle
@@ -282,6 +284,7 @@ Rules:
 
 ## 12. Tracking events
 
+- **Implemented (Phase 2 PR 2)**: the model with types `status_change` and source `admin` only, guarded like `AuditLog` (`core.AppendOnlyModel`); other types, sources, `location` and `payload` arrive with the phases that emit them.
 - `TrackingEvent` is append-only: `shipment`, `type` (status_change, scan, exception, note, correction, location_milestone), `status_after`, `occurred_at` (device time), `recorded_at` (server time), `actor`, `source` (admin, driver_app, warehouse, system, integration), `location` (optional point), `payload` (JSONB, schema per type), and `public` (bool: visible on customer tracking).
 - `shipment.status` is a denormalized copy of the latest status_change event. It is written in the same transaction. A nightly Celery check flags mismatches (`status != last status_change.status_after`) to ops and the logs.
 - The timeline is ordered by `occurred_at`, then `recorded_at`. Offline driver events can arrive late; `occurred_at` must not be in the future (with 5 min skew tolerance) and must not be earlier than the previous event minus the allowed drift. Out-of-order events are kept and flagged, never dropped.
@@ -355,7 +358,7 @@ Rules:
   - It is written in the same transaction as the mutation. Only successful responses are stored; an error rolls the record back, so the client can retry with the same key.
   - A concurrent duplicate waits on the unique index, then replays.
   - Replays carry `Idempotent-Replayed: true`. A daily beat task purges records older than 72 h.
-  - The decorator is optional when the header is absent; later phases make it required for driver mutations and shipment creation.
+  - The decorator is optional when the header is absent. `@idempotency_required` makes it mandatory (400 `idempotency.key_required`); shipment creation uses it since Phase 2, driver mutations will.
 - `Idempotency-Key` header is **required** on all driver-app mutations and on shipment creation; it is optional elsewhere. Stored `(company, user, key) → request hash, response, status` for 72 h. Same key plus a different payload → 422 `idempotency.key_reuse`.
 - Concurrency: `select_for_update` for state transitions and assignments, plus optimistic `version` integers on routes and stops (409 on stale version). This is what the dispatch board uses for concurrent edits.
 - **Login lockout (implemented Phase 1)**: 10 failures for one email within 15 min, from any IP, lock that email for 15 min (`429 auth.account_locked` with `Retry-After`). Each repeat lock doubles, up to 24 h; the streak resets after 24 h without a lock. State lives in Redis, keyed by a hash of the email. Known trade-off: anyone can temporarily lock a victim's login; the per-IP throttle limits the rate.

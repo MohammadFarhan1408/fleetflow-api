@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     "apps.audit",
     "apps.accounts",
     "apps.customers",
+    "apps.shipments",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -151,6 +152,12 @@ SPECTACULAR_SETTINGS = {
     # routes exist only locally); otherwise the committed schema differs between machines.
     "SCHEMA_PATH_PREFIX": r"/api/v1",
     "SERVE_PERMISSIONS": ["rest_framework.permissions.AllowAny"],
+    # Contract enums get stable, domain-qualified names; the field-name default ("StatusEnum")
+    # would collide once routes and stops have statuses too.
+    "ENUM_NAME_OVERRIDES": {
+        "ShipmentStatusEnum": "apps.shipments.models.ShipmentStatus",
+        "ShipmentPriorityEnum": "apps.shipments.models.ShipmentPriority",
+    },
 }
 
 # Email: console locally; production must set EMAIL_URL (e.g. smtp+tls://user:pass@host:587).

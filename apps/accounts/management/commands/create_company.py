@@ -9,12 +9,16 @@ from apps.core.errors import DomainError
 
 
 class Command(BaseCommand):
-    help = "Create a company (tenant) and invite its first owner by email."
+    help = "Create a company (tenant) with its first branch and invite its first owner by email."
 
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--name", required=True, help="Company name")
         parser.add_argument("--currency", required=True, help="ISO 4217 code, e.g. EUR")
         parser.add_argument("--timezone", required=True, help="IANA timezone, e.g. Europe/Berlin")
+        parser.add_argument("--branch-name", required=True, help="First branch's name")
+        parser.add_argument(
+            "--branch-code", required=True, help="First branch's code, 2-10 letters or digits"
+        )
         parser.add_argument("--owner-email", required=True, help="Owner's login email")
         parser.add_argument("--owner-name", required=True, help="Owner's full name")
 
@@ -24,6 +28,8 @@ class Command(BaseCommand):
                 company_name=options["name"],
                 currency=options["currency"],
                 timezone=options["timezone"],
+                branch_name=options["branch_name"],
+                branch_code=options["branch_code"],
                 owner_email=options["owner_email"],
                 owner_name=options["owner_name"],
             )

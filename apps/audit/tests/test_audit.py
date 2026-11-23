@@ -4,7 +4,8 @@ from pytest_django.fixtures import Settings
 
 from apps.accounts.factories import UserFactory
 from apps.audit import services as audit
-from apps.audit.models import AppendOnlyError, AuditAction, AuditLog
+from apps.audit.models import AuditAction, AuditLog
+from apps.core.models import AppendOnlyError
 from apps.core.request_id import set_request_id
 from apps.tenancy.factories import CompanyFactory
 

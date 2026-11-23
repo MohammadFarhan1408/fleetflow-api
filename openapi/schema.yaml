@@ -716,6 +716,377 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/shipments/:
+    get:
+      operationId: shipments_list
+      description: |-
+        List shipments in the user's branches (`shipments.view`), newest first, or create one
+        (`shipments.create`, `Idempotency-Key` required).
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+        description: Branch public ID.
+      - in: query
+        name: created_after
+        schema:
+          type: string
+          format: date-time
+        description: Inclusive.
+      - in: query
+        name: created_before
+        schema:
+          type: string
+          format: date-time
+        description: Exclusive.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: customer
+        schema:
+          type: string
+          format: uuid
+        description: Sender customer public ID.
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: priority
+        schema:
+          enum:
+          - normal
+          - high
+          - urgent
+          type: string
+          minLength: 1
+        description: |-
+          * `normal` - Normal
+          * `high` - High
+          * `urgent` - Urgent
+      - in: query
+        name: search
+        schema:
+          type: string
+          default: ''
+          maxLength: 100
+          minLength: 1
+        description: Prefix of the tracking number or external reference, case-insensitive.
+      - in: query
+        name: service_type
+        schema:
+          type: string
+          default: ''
+          maxLength: 32
+          minLength: 1
+      - in: query
+        name: status
+        schema:
+          type: array
+          items:
+            enum:
+            - draft
+            - created
+            - received_at_warehouse
+            - sorted
+            - assigned
+            - loaded
+            - out_for_delivery
+            - delivered
+            - delivery_failed
+            - returning
+            - returned_to_sender
+            - cancelled
+            type: string
+            description: |-
+              * `draft` - Draft
+              * `created` - Created
+              * `received_at_warehouse` - Received at warehouse
+              * `sorted` - Sorted
+              * `assigned` - Assigned
+              * `loaded` - Loaded
+              * `out_for_delivery` - Out for delivery
+              * `delivered` - Delivered
+              * `delivery_failed` - Delivery failed
+              * `returning` - Returning
+              * `returned_to_sender` - Returned to sender
+              * `cancelled` - Cancelled
+        description: Repeat to match any of several statuses.
+      tags:
+      - shipments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedShipmentListList'
+          description: ''
+    post:
+      operationId: shipments_create
+      description: |-
+        List shipments in the user's branches (`shipments.view`), newest first, or create one
+        (`shipments.create`, `Idempotency-Key` required).
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        schema:
+          type: string
+        description: Client-generated key (e.g. a UUID); retries with it replay the
+          result.
+        required: true
+      tags:
+      - shipments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShipmentCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/shipments/{public_id}/:
+    get:
+      operationId: shipments_retrieve
+      description: |-
+        Read a shipment (`shipments.view`). Drafts can be edited or deleted
+        (`shipments.create`); any other status answers 409 `shipment.not_draft`.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentDetail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    patch:
+      operationId: shipments_partial_update
+      description: |-
+        Read a shipment (`shipments.view`). Drafts can be edited or deleted
+        (`shipments.create`); any other status answers 409 `shipment.not_draft`.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedShipmentWrite'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    delete:
+      operationId: shipments_destroy
+      description: |-
+        Read a shipment (`shipments.view`). Drafts can be edited or deleted
+        (`shipments.create`); any other status answers 409 `shipment.not_draft`.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/shipments/{public_id}/tracking-token/:
+    post:
+      operationId: shipments_tracking_token_create
+      description: Rotate the public tracking token (`shipments.create`). The old
+        token stops working.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingToken'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/users/:
     get:
       operationId: users_list
@@ -978,6 +1349,15 @@ components:
       - public_id
       - region
       - updated_at
+    AddressRef:
+      type: object
+      properties:
+        address_id:
+          type: string
+          format: uuid
+          description: Address-book entry to copy.
+      required:
+      - address_id
     AddressWrite:
       type: object
       description: |-
@@ -1041,6 +1421,17 @@ components:
       - city
       - country
       - line1
+    BranchRef:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+      required:
+      - code
+      - public_id
     Customer:
       type: object
       properties:
@@ -1084,6 +1475,17 @@ components:
       - phone
       - public_id
       - updated_at
+    CustomerRef:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required:
+      - name
+      - public_id
     CustomerWrite:
       type: object
       properties:
@@ -1144,6 +1546,92 @@ components:
       description: |-
         * `manual` - Manual (client-supplied coordinates)
         * `none` - None (no coordinates)
+    InlineAddress:
+      type: object
+      description: A full address typed in for this shipment. The contact (recipient)
+        is required.
+      properties:
+        contact_name:
+          type: string
+          maxLength: 200
+        phone:
+          oneOf:
+          - type: string
+            default: ''
+            pattern: ^\+[1-9]\d{1,14}$
+            maxLength: 16
+          - type: string
+            maxLength: 0
+        line1:
+          type: string
+          maxLength: 200
+        line2:
+          type: string
+          default: ''
+          maxLength: 200
+        city:
+          type: string
+          maxLength: 100
+        region:
+          type: string
+          default: ''
+          maxLength: 100
+        postal_code:
+          type: string
+          default: ''
+          maxLength: 20
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2, e.g. DE.
+          maxLength: 2
+          minLength: 2
+        latitude:
+          type: number
+          format: double
+          maximum: 90
+          minimum: -90
+          writeOnly: true
+          nullable: true
+        longitude:
+          type: number
+          format: double
+          maximum: 180
+          minimum: -180
+          writeOnly: true
+          nullable: true
+      required:
+      - city
+      - contact_name
+      - country
+      - line1
+    ItemWrite:
+      type: object
+      properties:
+        weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+        length_cm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,1})?$
+        width_cm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,1})?$
+        height_cm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,1})?$
+        description:
+          type: string
+          default: ''
+          maxLength: 200
+      required:
+      - height_cm
+      - length_cm
+      - weight_kg
+      - width_cm
     KindEnum:
       enum:
       - individual
@@ -1265,6 +1753,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Customer'
+    PaginatedShipmentListList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipmentList'
     PaginatedUserList:
       type: object
       required:
@@ -1390,6 +1897,45 @@ components:
             maxLength: 16
           - type: string
             maxLength: 0
+    PatchedShipmentWrite:
+      type: object
+      description: |-
+        Shipment fields. On a draft PATCH, sent fields replace the stored ones; `items`, if
+        sent, replaces every parcel.
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+          description: The sender.
+        service_type:
+          type: string
+          description: Service type code.
+          maxLength: 32
+        pickup:
+          $ref: '#/components/schemas/ShipmentAddressInput'
+        delivery:
+          $ref: '#/components/schemas/ShipmentAddressInput'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemWrite'
+          maxItems: 500
+          minItems: 1
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentPriorityEnum'
+          default: normal
+        scheduled_pickup_date:
+          type: string
+          format: date
+          nullable: true
+        external_reference:
+          type: string
+          default: ''
+          maxLength: 100
     PatchedUserUpdate:
       type: object
       properties:
@@ -1441,6 +1987,326 @@ components:
         * `customer_service` - Customer service
         * `driver` - Driver
         * `viewer` - Viewer
+    ShipmentAddress:
+      type: object
+      properties:
+        contact_name:
+          type: string
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        line1:
+          type: string
+          readOnly: true
+        line2:
+          type: string
+          readOnly: true
+        city:
+          type: string
+          readOnly: true
+        region:
+          type: string
+          readOnly: true
+        postal_code:
+          type: string
+          readOnly: true
+        country:
+          type: string
+          readOnly: true
+        latitude:
+          type: number
+          format: double
+          nullable: true
+          readOnly: true
+        longitude:
+          type: number
+          format: double
+          nullable: true
+          readOnly: true
+        geocode_confidence:
+          allOf:
+          - $ref: '#/components/schemas/GeocodeConfidenceEnum'
+          readOnly: true
+        source_address_id:
+          type: string
+          format: uuid
+          nullable: true
+      required:
+      - city
+      - contact_name
+      - country
+      - geocode_confidence
+      - latitude
+      - line1
+      - line2
+      - longitude
+      - phone
+      - postal_code
+      - region
+    ShipmentAddressInput:
+      oneOf:
+      - $ref: '#/components/schemas/AddressRef'
+      - $ref: '#/components/schemas/InlineAddress'
+    ShipmentCreate:
+      type: object
+      description: |-
+        Shipment fields. On a draft PATCH, sent fields replace the stored ones; `items`, if
+        sent, replaces every parcel.
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+          description: The sender.
+        service_type:
+          type: string
+          description: Service type code.
+          maxLength: 32
+        pickup:
+          $ref: '#/components/schemas/ShipmentAddressInput'
+        delivery:
+          $ref: '#/components/schemas/ShipmentAddressInput'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemWrite'
+          maxItems: 500
+          minItems: 1
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentPriorityEnum'
+          default: normal
+        scheduled_pickup_date:
+          type: string
+          format: date
+          nullable: true
+        external_reference:
+          type: string
+          default: ''
+          maxLength: 100
+        draft:
+          type: boolean
+          default: false
+          description: Create as an editable draft.
+      required:
+      - branch_id
+      - customer_id
+      - delivery
+      - items
+      - pickup
+      - service_type
+    ShipmentDetail:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        tracking_number:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentStatusEnum'
+          readOnly: true
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentPriorityEnum'
+          readOnly: true
+        branch:
+          $ref: '#/components/schemas/BranchRef'
+        customer:
+          $ref: '#/components/schemas/CustomerRef'
+        service_type:
+          type: string
+        scheduled_pickup_date:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        external_reference:
+          type: string
+          readOnly: true
+        total_weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        tracking_token:
+          type: string
+          readOnly: true
+        pickup:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentAddress'
+          readOnly: true
+        delivery:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentAddress'
+          readOnly: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShipmentItem'
+      required:
+      - branch
+      - created_at
+      - customer
+      - delivery
+      - external_reference
+      - items
+      - pickup
+      - priority
+      - public_id
+      - scheduled_pickup_date
+      - service_type
+      - status
+      - total_weight_kg
+      - tracking_number
+      - tracking_token
+      - updated_at
+    ShipmentItem:
+      type: object
+      properties:
+        barcode:
+          type: string
+          readOnly: true
+        description:
+          type: string
+          readOnly: true
+        weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+          readOnly: true
+        length_cm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,1})?$
+          readOnly: true
+        width_cm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,1})?$
+          readOnly: true
+        height_cm:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,1})?$
+          readOnly: true
+      required:
+      - barcode
+      - description
+      - height_cm
+      - length_cm
+      - weight_kg
+      - width_cm
+    ShipmentList:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        tracking_number:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentStatusEnum'
+          readOnly: true
+        priority:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentPriorityEnum'
+          readOnly: true
+        branch:
+          $ref: '#/components/schemas/BranchRef'
+        customer:
+          $ref: '#/components/schemas/CustomerRef'
+        service_type:
+          type: string
+        scheduled_pickup_date:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        external_reference:
+          type: string
+          readOnly: true
+        total_weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - branch
+      - created_at
+      - customer
+      - external_reference
+      - priority
+      - public_id
+      - scheduled_pickup_date
+      - service_type
+      - status
+      - total_weight_kg
+      - tracking_number
+      - updated_at
+    ShipmentPriorityEnum:
+      enum:
+      - normal
+      - high
+      - urgent
+      type: string
+      description: |-
+        * `normal` - Normal
+        * `high` - High
+        * `urgent` - Urgent
+    ShipmentStatusEnum:
+      enum:
+      - draft
+      - created
+      - received_at_warehouse
+      - sorted
+      - assigned
+      - loaded
+      - out_for_delivery
+      - delivered
+      - delivery_failed
+      - returning
+      - returned_to_sender
+      - cancelled
+      type: string
+      description: |-
+        * `draft` - Draft
+        * `created` - Created
+        * `received_at_warehouse` - Received at warehouse
+        * `sorted` - Sorted
+        * `assigned` - Assigned
+        * `loaded` - Loaded
+        * `out_for_delivery` - Out for delivery
+        * `delivered` - Delivered
+        * `delivery_failed` - Delivery failed
+        * `returning` - Returning
+        * `returned_to_sender` - Returned to sender
+        * `cancelled` - Cancelled
     TokenPair:
       type: object
       properties:
@@ -1451,6 +2317,14 @@ components:
       required:
       - access
       - refresh
+    TrackingToken:
+      type: object
+      properties:
+        tracking_token:
+          type: string
+          readOnly: true
+      required:
+      - tracking_token
     User:
       type: object
       description: A company member as returned by the users API. Explicit fields

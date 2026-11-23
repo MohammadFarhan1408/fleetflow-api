@@ -1,5 +1,5 @@
 from apps.tenancy.constants import DEFAULT_SERVICE_TYPES
-from apps.tenancy.models import Company, ServiceType
+from apps.tenancy.models import Branch, Company, ServiceType
 
 
 def create_company(*, name: str, currency: str, timezone: str) -> Company:
@@ -11,3 +11,10 @@ def create_company(*, name: str, currency: str, timezone: str) -> Company:
         ServiceType(company=company, **defaults) for defaults in DEFAULT_SERVICE_TYPES
     )
     return company
+
+
+def create_branch(*, company: Company, name: str, code: str) -> Branch:
+    branch = Branch(company=company, name=name.strip(), code=code.strip().upper())
+    branch.full_clean()
+    branch.save()
+    return branch

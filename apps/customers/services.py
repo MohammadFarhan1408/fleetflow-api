@@ -128,9 +128,7 @@ def archive_customer(*, actor: User, customer: Customer, request: HttpRequest) -
 def _apply_address_fields(address: Address, fields: AddressFields) -> None:
     for name, value in asdict(fields).items():
         setattr(address, name, value)
-    address.geocode_confidence = (
-        GeocodeConfidence.NONE if fields.location is None else GeocodeConfidence.MANUAL
-    )
+    address.geocode_confidence = GeocodeConfidence.for_location(fields.location)
     address.full_clean()
 
 
