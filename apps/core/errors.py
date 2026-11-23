@@ -45,6 +45,12 @@ class ErrorCode(StrEnum):
     THROTTLED = "throttled"
     APP_UPDATE_REQUIRED = "app.update_required"
     APP_INVALID_VERSION = "app.invalid_version"
+    IDEMPOTENCY_INVALID_KEY = "idempotency.invalid_key"
+    IDEMPOTENCY_KEY_REUSE = "idempotency.key_reuse"
+    USER_EMAIL_TAKEN = "user.email_taken"
+    USER_CANNOT_MODIFY_SELF = "user.cannot_modify_self"
+    USER_OWNER_REQUIRED = "user.owner_required"
+    USER_LAST_OWNER = "user.last_owner"
     SERVER_ERROR = "server_error"
 
 
@@ -89,6 +95,22 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.THROTTLED: ErrorSpec(429, ErrorType.RATE_LIMITED, "Too many requests"),
     ErrorCode.APP_UPDATE_REQUIRED: ErrorSpec(426, ErrorType.CLIENT, "App update required"),
     ErrorCode.APP_INVALID_VERSION: ErrorSpec(400, ErrorType.CLIENT, "Invalid app version"),
+    ErrorCode.IDEMPOTENCY_INVALID_KEY: ErrorSpec(
+        400, ErrorType.CLIENT, "Invalid Idempotency-Key header"
+    ),
+    ErrorCode.IDEMPOTENCY_KEY_REUSE: ErrorSpec(
+        422, ErrorType.CONFLICT, "Idempotency-Key reused with a different request"
+    ),
+    ErrorCode.USER_EMAIL_TAKEN: ErrorSpec(409, ErrorType.CONFLICT, "Email already in use"),
+    ErrorCode.USER_CANNOT_MODIFY_SELF: ErrorSpec(
+        409, ErrorType.CONFLICT, "You cannot change your own roles, branches or status"
+    ),
+    ErrorCode.USER_OWNER_REQUIRED: ErrorSpec(
+        403, ErrorType.PERMISSION, "Only an owner can grant, revoke or modify owners"
+    ),
+    ErrorCode.USER_LAST_OWNER: ErrorSpec(
+        409, ErrorType.CONFLICT, "The company must keep at least one active owner"
+    ),
     ErrorCode.SERVER_ERROR: ErrorSpec(500, ErrorType.SERVER, "Internal server error"),
 }
 

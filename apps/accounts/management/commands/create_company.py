@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.accounts.services import create_company_with_owner
+from apps.core.errors import DomainError
 
 
 class Command(BaseCommand):
@@ -24,6 +25,8 @@ class Command(BaseCommand):
             )
         except ValidationError as exc:
             raise CommandError("; ".join(exc.messages)) from exc
+        except DomainError as exc:
+            raise CommandError(str(exc.detail)) from exc
         self.stdout.write(
             self.style.SUCCESS(
                 f"Created company {company.public_id} and invited owner {owner.email}."

@@ -1,5 +1,7 @@
 import uuid
+from dataclasses import dataclass
 from datetime import timedelta
+from typing import Any
 
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
@@ -33,7 +35,7 @@ from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.core.errors import DomainError, ErrorCode
 from apps.tenancy import services as tenancy
-from apps.tenancy.models import Company
+from apps.tenancy.models import Branch, Company
 
 
 @transaction.atomic
@@ -44,14 +46,7 @@ def create_company_with_owner(
 
     The owner has no usable password until they follow the emailed link.
     """
-    email = normalize_email(owner_email)
-    if User.objects.filter(email=email).exists():
-        raise ValidationError({"owner_email": "A user with this email already exists."})
-
     company = tenancy.create_company(name=company_name)
-    owner = User.objects.create_user(email=email, full_name=owner_name, company=company)
-    owner.roles.add(Role.objects.get(code=RoleCode.OWNER))
-
     audit.record(
         AuditAction.COMPANY_CREATED,
         company=company,
@@ -59,15 +54,224 @@ def create_company_with_owner(
         object_id=str(company.public_id),
         after={"name": company.name},
     )
+    owner = _create_invited_user(
+        company=company,
+        email=owner_email,
+        full_name=owner_name,
+        roles=[RoleCode.OWNER],
+        branches=[],
+        actor=None,
+        request=None,
+    )
+    return company, owner
+
+
+# --- User management (users API) -----------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UserChanges:
+    """Fields a PATCH may change; None means "leave as is"."""
+
+    full_name: str | None = None
+    roles: list[RoleCode] | None = None
+    branch_ids: list[uuid.UUID] | None = None
+    is_active: bool | None = None
+
+
+def invite_user(
+    *,
+    actor: User,
+    email: str,
+    full_name: str,
+    roles: list[RoleCode],
+    branch_ids: list[uuid.UUID],
+    request: HttpRequest,
+) -> User:
+    """Create a user in the actor's company and email them a link to set a password."""
+    if RoleCode.OWNER in roles and not _is_owner(actor):
+        raise DomainError(ErrorCode.USER_OWNER_REQUIRED)
+    with transaction.atomic():
+        return _create_invited_user(
+            company=actor.company,
+            email=email,
+            full_name=full_name,
+            roles=roles,
+            branches=_resolve_branches(actor.company, branch_ids),
+            actor=actor,
+            request=request,
+        )
+
+
+def update_user(*, actor: User, target: User, changes: UserChanges, request: HttpRequest) -> User:
+    """Apply a users-API PATCH with the ownership guards (decision D-API-11).
+
+    - Users cannot change their own roles, branches or active status.
+    - Only owners may grant or revoke the owner role, or change an owner's access (roles,
+      branches, status). Admins may still edit an owner's name.
+    - The company always keeps at least one active owner.
+    """
+    # Defence in depth: the view resolves `target` through the tenant-scoped selector, but
+    # the service must not rely on that (rules.md §3). Same answer as a missing user.
+    if target.company_id != actor.company_id:
+        raise DomainError(ErrorCode.NOT_FOUND)
+
+    with transaction.atomic():
+        # Serializes concurrent membership edits in one company, so two requests cannot
+        # each remove "the other" owner and leave none.
+        Company.objects.select_for_update().get(pk=actor.company_id)
+        target = User.objects.select_for_update().get(pk=target.pk)
+
+        old_roles = set(target.roles.values_list("code", flat=True))
+        new_roles = set(changes.roles) if changes.roles is not None else old_roles
+        touches_access = (
+            changes.roles is not None
+            or changes.branch_ids is not None
+            or changes.is_active is not None
+        )
+
+        if target.pk == actor.pk and touches_access:
+            raise DomainError(ErrorCode.USER_CANNOT_MODIFY_SELF)
+        if touches_access and RoleCode.OWNER in (old_roles | new_roles) and not _is_owner(actor):
+            raise DomainError(ErrorCode.USER_OWNER_REQUIRED)
+
+        deactivating = changes.is_active is False and target.is_active
+        losing_owner = RoleCode.OWNER in old_roles and (
+            RoleCode.OWNER not in new_roles or deactivating
+        )
+        if losing_owner and not _other_active_owner_exists(target):
+            raise DomainError(ErrorCode.USER_LAST_OWNER)
+
+        if changes.full_name is not None:
+            target.full_name = changes.full_name.strip()
+            target.full_clean(exclude=["password"])
+            target.save(update_fields=["full_name", "updated_at"])
+
+        if changes.roles is not None and new_roles != old_roles:
+            target.roles.set(Role.objects.filter(code__in=new_roles))
+            _audit_user(
+                AuditAction.USER_ROLES_CHANGED,
+                actor,
+                target,
+                request,
+                before={"roles": sorted(old_roles)},
+                after={"roles": sorted(new_roles)},
+            )
+
+        if changes.branch_ids is not None:
+            old_branches = {str(b) for b in target.branches.values_list("public_id", flat=True)}
+            branches = _resolve_branches(actor.company, changes.branch_ids)
+            new_branches = {str(b.public_id) for b in branches}
+            if new_branches != old_branches:
+                target.branches.set(branches)
+                _audit_user(
+                    AuditAction.USER_BRANCHES_CHANGED,
+                    actor,
+                    target,
+                    request,
+                    before={"branches": sorted(old_branches)},
+                    after={"branches": sorted(new_branches)},
+                )
+
+        if changes.is_active is not None and changes.is_active != target.is_active:
+            target.is_active = changes.is_active
+            target.save(update_fields=["is_active", "updated_at"])
+            if deactivating:
+                # Ends every session now; the per-request check also rejects the user.
+                _revoke_families(target.token_families.all(), TokenFamilyRevokedReason.DEACTIVATED)
+            _audit_user(
+                AuditAction.USER_DEACTIVATED if deactivating else AuditAction.USER_REACTIVATED,
+                actor,
+                target,
+                request,
+            )
+    return target
+
+
+def _create_invited_user(
+    *,
+    company: Company,
+    email: str,
+    full_name: str,
+    roles: list[RoleCode],
+    branches: list[Branch],
+    actor: User | None,
+    request: HttpRequest | None,
+) -> User:
+    """Create a user with no usable password, assign access, audit, and send the invite.
+
+    Must run inside a transaction: the email goes out only after commit.
+    """
+    email = normalize_email(email)
+    # Emails are unique across all companies (one login identity per person).
+    if User.objects.filter(email=email).exists():
+        raise DomainError(ErrorCode.USER_EMAIL_TAKEN, errors={"email": ["Already in use."]})
+    user = User.objects.create_user(email=email, full_name=full_name, company=company)
+    user.roles.set(Role.objects.filter(code__in=roles))
+    user.branches.set(branches)
     audit.record(
         AuditAction.USER_CREATED,
         company=company,
+        actor=actor,
         object_type="user",
-        object_id=str(owner.public_id),
-        after={"email": owner.email, "roles": [RoleCode.OWNER.value]},
+        object_id=str(user.public_id),
+        after={
+            "email": user.email,
+            "roles": sorted(roles),
+            "branches": sorted(str(b.public_id) for b in branches),
+        },
+        request=request,
     )
-    transaction.on_commit(lambda: send_invite_email.delay(owner.pk))
-    return company, owner
+    transaction.on_commit(lambda: send_invite_email.delay(user.pk))
+    return user
+
+
+def _resolve_branches(company: Company, branch_ids: list[uuid.UUID]) -> list[Branch]:
+    """Branches of `company` by public ID. Unknown or other-tenant IDs are reported the
+    same way, so the response never reveals another company's data."""
+    wanted = set(branch_ids)
+    branches = list(Branch.objects.for_company(company).filter(public_id__in=wanted))
+    missing = wanted - {b.public_id for b in branches}
+    if missing:
+        raise DomainError(
+            ErrorCode.VALIDATION_INVALID_REFERENCE,
+            errors={"branches": [f"Unknown branch {branch_id}." for branch_id in sorted(missing)]},
+        )
+    return branches
+
+
+def _is_owner(user: User) -> bool:
+    return user.roles.filter(code=RoleCode.OWNER).exists()
+
+
+def _other_active_owner_exists(user: User) -> bool:
+    return (
+        User.objects.for_company(user.company)
+        .filter(is_active=True, roles__code=RoleCode.OWNER)
+        .exclude(pk=user.pk)
+        .exists()
+    )
+
+
+def _audit_user(
+    action: AuditAction,
+    actor: User,
+    target: User,
+    request: HttpRequest,
+    *,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+) -> None:
+    audit.record(
+        action,
+        company=target.company,
+        actor=actor,
+        object_type="user",
+        object_id=str(target.public_id),
+        before=before,
+        after=after,
+        request=request,
+    )
 
 
 # --- Authentication (architecture §7) ------------------------------------------------

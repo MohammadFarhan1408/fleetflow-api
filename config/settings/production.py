@@ -1,7 +1,14 @@
+from django.core.exceptions import ImproperlyConfigured
+
 from config.settings.base import *  # noqa: F403  (settings module layering)
-from config.settings.base import env
+from config.settings.base import JWT_SIGNING_KEY, env
 
 DEBUG = False
+
+# HS256 tokens can be brute-forced offline if the key is short (RFC 7518 §3.2: at least
+# 256 bits). Refuse to start rather than issue guessable tokens.
+if len(JWT_SIGNING_KEY) < 32:
+    raise ImproperlyConfigured("JWT_SIGNING_KEY must be at least 32 characters in production.")
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
 
 # Required in production: no silent fallback to the console backend or localhost links.

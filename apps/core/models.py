@@ -1,5 +1,7 @@
 import uuid
 
+from django.conf import settings
+from django.core.serializers.json import DjangoJSONEncoder
 from django.db import models
 
 
@@ -22,3 +24,25 @@ class PublicIdModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+class IdempotencyRecord(models.Model):
+    """A completed mutation, replayed when the same user retries with the same key.
+
+    Records are kept 72 hours (architecture §20) and purged by a daily task.
+    """
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="+")
+    key = models.CharField(max_length=255)
+    request_hash = models.CharField(max_length=64)
+    status_code = models.PositiveSmallIntegerField(null=True)
+    response_body = models.JSONField(null=True, encoder=DjangoJSONEncoder)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "key"], name="idempotency_unique_user_key")
+        ]
+
+    def __str__(self) -> str:
+        return self.key

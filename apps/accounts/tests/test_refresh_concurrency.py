@@ -12,7 +12,8 @@ from apps.accounts.tokens import TokenPair, issue_token_pair
 from apps.core.errors import DomainError
 
 
-@pytest.mark.django_db(transaction=True)
+# serialized_rollback restores the migration-seeded roles after the table flush.
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
 def test_concurrent_refreshes_of_one_token_both_succeed_and_keep_the_session() -> None:
     user = UserFactory.create()
     pair = issue_token_pair(user, TokenFamily.objects.create(user=user))

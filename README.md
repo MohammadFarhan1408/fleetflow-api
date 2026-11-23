@@ -25,7 +25,7 @@ uv sync
 uv run ruff check . && uv run ruff format --check .
 uv run mypy .
 uv run python manage.py makemigrations --check --dry-run
-uv run pytest --cov
+uv run pytest --cov --cov-fail-under=85
 uv run pip-audit
 uv run python manage.py spectacular --file openapi/schema.yaml --validate --fail-on-warn
 ```

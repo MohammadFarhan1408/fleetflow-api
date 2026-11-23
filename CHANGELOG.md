@@ -4,6 +4,31 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: users API and idempotency (Phase 1)
+
+- `GET /api/v1/users/` (`users.view`) → cursor-paginated `{next, previous, results[]}`, newest first, `?page_size=` up to 100. Each result has:
+  - `public_id`, `email`, `full_name`, `is_active`
+  - `roles[]`
+  - `branches[{public_id,name}]`
+  - `last_login`, `created_at`
+- `GET /api/v1/users/{public_id}/` (`users.view`). A user of another company returns 404.
+- `POST /api/v1/users/` (`users.manage`) `{email, full_name, roles[], branches[]?}` → `201`. The user receives an email to set their password.
+- `PATCH /api/v1/users/{public_id}/` (`users.manage`), any of `{full_name, roles[], branches[], is_active}` → `200`. Deactivation ends the user's sessions immediately.
+- New error codes:
+  - `user.email_taken` (409). Emails are unique across all companies.
+  - `user.cannot_modify_self` (409): changing your own roles, branches or status.
+  - `user.owner_required` (403): only owners grant or revoke owner, or change an owner's access.
+  - `user.last_owner` (409)
+  - `validation.invalid_reference` (400): branch not in your company.
+  - `idempotency.invalid_key` (400)
+  - `idempotency.key_reuse` (422)
+- **`Idempotency-Key` header** (optional for now; architecture §20) on `POST /users/` and `PATCH /users/{id}/`:
+  - Keys are scoped per user and kept 72 h.
+  - A retry replays the first successful response with `Idempotent-Replayed: true`.
+  - The same key with a different method, path or body gets 422.
+  - Failed requests store nothing, so they can be retried with the same key.
+- Methods a route does not implement answer `405 method_not_allowed`.
+
 ### api-additive: authentication and session bootstrap (Phase 1)
 
 - `POST /api/v1/auth/login/` `{email, password}` → `200 {access, refresh}`. The email is case-insensitive.

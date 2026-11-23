@@ -1,16 +1,25 @@
+import uuid
 from dataclasses import asdict
 from typing import Any
 
+from django.db.models import QuerySet
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.exceptions import NotAuthenticated
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts import services
-from apps.accounts.models import User
-from apps.accounts.permissions import get_user_permissions
+from apps.accounts import selectors, services
+from apps.accounts.models import RoleCode, User
+from apps.accounts.permissions import (
+    USERS_MANAGE,
+    USERS_VIEW,
+    HasRequiredPermission,
+    get_user_permissions,
+)
 from apps.accounts.serializers import (
     LoginSerializer,
     MeSerializer,
@@ -18,6 +27,9 @@ from apps.accounts.serializers import (
     PasswordResetRequestSerializer,
     RefreshTokenSerializer,
     TokenPairSerializer,
+    UserInviteSerializer,
+    UserSerializer,
+    UserUpdateSerializer,
 )
 from apps.accounts.throttles import (
     LoginThrottle,
@@ -25,6 +37,7 @@ from apps.accounts.throttles import (
     PasswordResetIPThrottle,
     RefreshThrottle,
 )
+from apps.core.idempotency import idempotent
 from apps.core.serializers import ErrorSerializer
 
 ERROR = OpenApiResponse(ErrorSerializer)
@@ -137,3 +150,88 @@ class MeView(APIView):
             "permissions": sorted(get_user_permissions(user)),
         }
         return Response(MeSerializer(payload).data)
+
+
+def _current_user(request: Request) -> User:
+    """The authenticated FleetFlow user. IsAuthenticated normally rejects anything else
+    first; this explicit check keeps that true even under `python -O`."""
+    user = request.user
+    if not isinstance(user, User):
+        raise NotAuthenticated
+    return user
+
+
+class UserListCreateView(ListAPIView[User]):
+    """List the company's users (`users.view`) or invite a new one (`users.manage`)."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"GET": USERS_VIEW, "POST": USERS_MANAGE}
+    serializer_class = UserSerializer
+
+    def get_queryset(self) -> QuerySet[User]:
+        return selectors.users_for_company(_current_user(self.request).company)
+
+    @extend_schema(
+        request=UserInviteSerializer,
+        responses={201: UserSerializer, 400: ERROR, 401: ERROR, 403: ERROR, 409: ERROR, 422: ERROR},
+    )
+    @idempotent
+    def post(self, request: Request) -> Response:
+        serializer = UserInviteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        user = services.invite_user(
+            actor=_current_user(request),
+            email=data["email"],
+            full_name=data["full_name"],
+            roles=[RoleCode(code) for code in data["roles"]],
+            branch_ids=data["branches"],
+            request=request,
+        )
+        created = selectors.get_company_user(user.company, user.public_id)
+        return Response(UserSerializer(created).data, status=status.HTTP_201_CREATED)
+
+
+class UserDetailView(APIView):
+    """Read (`users.view`) or update (`users.manage`) one user of the company."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"GET": USERS_VIEW, "PATCH": USERS_MANAGE}
+
+    @extend_schema(responses={200: UserSerializer, 401: ERROR, 403: ERROR, 404: ERROR})
+    def get(self, request: Request, public_id: uuid.UUID) -> Response:
+        user = selectors.get_company_user(_current_user(request).company, public_id)
+        return Response(UserSerializer(user).data)
+
+    @extend_schema(
+        request=UserUpdateSerializer,
+        responses={
+            200: UserSerializer,
+            400: ERROR,
+            401: ERROR,
+            403: ERROR,
+            404: ERROR,
+            409: ERROR,
+            422: ERROR,
+        },
+    )
+    @idempotent
+    def patch(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = _current_user(request)
+        target = selectors.get_company_user(actor.company, public_id)
+        serializer = UserUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        services.update_user(
+            actor=actor,
+            target=target,
+            changes=services.UserChanges(
+                full_name=data.get("full_name"),
+                roles=[RoleCode(code) for code in data["roles"]] if "roles" in data else None,
+                branch_ids=data.get("branches"),
+                is_active=data.get("is_active"),
+            ),
+            request=request,
+        )
+        updated = selectors.get_company_user(actor.company, public_id)
+        return Response(UserSerializer(updated).data)

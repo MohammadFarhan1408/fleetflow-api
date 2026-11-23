@@ -45,7 +45,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 1: Core Foundation
 
-- **Status**: IN PROGRESS (approved plan: 4 PRs, `chore/python-3.14`, `feature/api-foundation`, `feature/api-auth`, `feature/api-users`; see memory.md)
+- **Status**: IN PROGRESS. All 4 PRs implemented (#2, #3 and #4 merged; `feature/api-users` awaiting PR). The Phase 1 security review ran on 2026-11-22 (memory.md). Awaiting the owner's checkpoint review before Phase 2.
 - **Goal**: secure multi-tenant identity.
 - **Scope**: Company, Branch, User (email login), Role/Permission seed, JWT login/refresh/logout with rotation and blacklist, password reset, throttles, tenant-scoped base manager, RBAC permission classes, AuditLog, error envelope, idempotency middleware, tenant isolation sweep test harness.
 - **Dependencies**: Phase 0.
