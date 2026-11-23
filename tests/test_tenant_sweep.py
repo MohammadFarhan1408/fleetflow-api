@@ -17,6 +17,7 @@ from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode
 from apps.accounts.tests.conftest import login
 from apps.customers.factories import AddressFactory, CustomerFactory
+from apps.shipments.factories import ShipmentFactory
 from apps.tenancy.factories import CompanyFactory
 from apps.tenancy.models import Company
 
@@ -44,6 +45,17 @@ def _address_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return kwargs, [str(address.public_id), address.line1, address.customer.name]
 
 
+def _shipment_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    shipment = ShipmentFactory.create(branch__company=company, external_reference="A-REF-1")
+    secrets = [
+        str(shipment.public_id),
+        shipment.tracking_number,
+        shipment.tracking_token,
+        shipment.external_reference,
+    ]
+    return {"public_id": shipment.public_id}, secrets
+
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
@@ -52,15 +64,19 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "customer-address-list": _customer_addresses_in,
     "customer-address-detail": _address_in,
     "customer-address-archive": _address_in,
+    "shipment-detail": _shipment_in,
+    "shipment-tracking-token": _shipment_in,
 }
 
 # URL name → strings in company A that must never appear in company B's list response.
 LIST_ROUTES: dict[str, ObjectFactory] = {
     "user-list": _user_in,
     "customer-list": _customer_in,
+    "shipment-list": _shipment_in,
 }
 
 # Valid for users, customers and addresses alike, so each route reaches its object lookup.
+# Shipment views look the object up before validating the body.
 MUTATING_BODY = {
     "full_name": "pwned",
     "roles": ["owner"],

@@ -47,12 +47,19 @@ class ErrorCode(StrEnum):
     APP_INVALID_VERSION = "app.invalid_version"
     IDEMPOTENCY_INVALID_KEY = "idempotency.invalid_key"
     IDEMPOTENCY_KEY_REUSE = "idempotency.key_reuse"
+    IDEMPOTENCY_KEY_REQUIRED = "idempotency.key_required"
     USER_EMAIL_TAKEN = "user.email_taken"
     USER_CANNOT_MODIFY_SELF = "user.cannot_modify_self"
     USER_OWNER_REQUIRED = "user.owner_required"
     USER_LAST_OWNER = "user.last_owner"
     CUSTOMER_ARCHIVED = "customer.archived"
     ADDRESS_ARCHIVED = "address.archived"
+    CUSTOMER_INACTIVE = "customer.inactive"
+    SHIPMENT_INVALID_WEIGHT = "shipment.invalid_weight"
+    SHIPMENT_UNSUPPORTED_TYPE = "shipment.unsupported_type"
+    SHIPMENT_PAST_SCHEDULE = "shipment.past_schedule"
+    SHIPMENT_DUPLICATE_REFERENCE = "shipment.duplicate_reference"
+    SHIPMENT_NOT_DRAFT = "shipment.not_draft"
     SERVER_ERROR = "server_error"
 
 
@@ -103,6 +110,9 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.IDEMPOTENCY_KEY_REUSE: ErrorSpec(
         422, ErrorType.CONFLICT, "Idempotency-Key reused with a different request"
     ),
+    ErrorCode.IDEMPOTENCY_KEY_REQUIRED: ErrorSpec(
+        400, ErrorType.CLIENT, "Idempotency-Key header required"
+    ),
     ErrorCode.USER_EMAIL_TAKEN: ErrorSpec(409, ErrorType.CONFLICT, "Email already in use"),
     ErrorCode.USER_CANNOT_MODIFY_SELF: ErrorSpec(
         409, ErrorType.CONFLICT, "You cannot change your own roles, branches or status"
@@ -115,6 +125,22 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.CUSTOMER_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Customer is archived"),
     ErrorCode.ADDRESS_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Address is archived"),
+    ErrorCode.CUSTOMER_INACTIVE: ErrorSpec(400, ErrorType.VALIDATION, "Customer is archived"),
+    ErrorCode.SHIPMENT_INVALID_WEIGHT: ErrorSpec(
+        400, ErrorType.VALIDATION, "Invalid shipment weight"
+    ),
+    ErrorCode.SHIPMENT_UNSUPPORTED_TYPE: ErrorSpec(
+        400, ErrorType.VALIDATION, "Unsupported service type"
+    ),
+    ErrorCode.SHIPMENT_PAST_SCHEDULE: ErrorSpec(
+        400, ErrorType.VALIDATION, "Scheduled date is in the past"
+    ),
+    ErrorCode.SHIPMENT_DUPLICATE_REFERENCE: ErrorSpec(
+        409, ErrorType.CONFLICT, "External reference already used"
+    ),
+    ErrorCode.SHIPMENT_NOT_DRAFT: ErrorSpec(
+        409, ErrorType.CONFLICT, "Only draft shipments can be changed"
+    ),
     ErrorCode.SERVER_ERROR: ErrorSpec(500, ErrorType.SERVER, "Internal server error"),
 }
 

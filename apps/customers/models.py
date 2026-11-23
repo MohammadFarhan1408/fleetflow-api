@@ -1,4 +1,5 @@
 from django.contrib.gis.db import models as gis_models
+from django.contrib.gis.geos import Point
 from django.db import models
 
 from apps.core.models import PublicIdModel, TimeStampedModel
@@ -42,13 +43,15 @@ class GeocodeConfidence(models.TextChoices):
     MANUAL = "manual", "Manual (client-supplied coordinates)"
     NONE = "none", "None (no coordinates)"
 
+    @classmethod
+    def for_location(cls, location: Point | None) -> GeocodeConfidence:
+        return cls.NONE if location is None else cls.MANUAL
 
-class Address(TenantScopedModel, PublicIdModel, TimeStampedModel):
-    """An entry in a customer's address book. Shipments snapshot it (D-API-20), so edits
-    never change shipment history."""
 
-    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="addresses")
-    label = models.CharField(max_length=100, blank=True)
+class PostalAddress(models.Model):
+    """Postal address fields and their invariants, shared by the address book and the
+    immutable shipment snapshots (memory D-API-20)."""
+
     contact_name = models.CharField(max_length=200, blank=True)
     phone = models.CharField(max_length=16, blank=True, validators=[validate_e164])
     line1 = models.CharField(max_length=200)
@@ -61,15 +64,14 @@ class Address(TenantScopedModel, PublicIdModel, TimeStampedModel):
     geocode_confidence = models.CharField(
         max_length=10, choices=GeocodeConfidence.choices, default=GeocodeConfidence.NONE
     )
-    archived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        verbose_name_plural = "addresses"
+        abstract = True
         constraints = [
-            models.CheckConstraint(condition=~models.Q(line1=""), name="address_line1_not_empty"),
-            models.CheckConstraint(condition=~models.Q(city=""), name="address_city_not_empty"),
+            models.CheckConstraint(condition=~models.Q(line1=""), name="%(class)s_line1_not_empty"),
+            models.CheckConstraint(condition=~models.Q(city=""), name="%(class)s_city_not_empty"),
             models.CheckConstraint(
-                condition=models.Q(country__regex=r"^[A-Z]{2}$"), name="address_country_format"
+                condition=models.Q(country__regex=r"^[A-Z]{2}$"), name="%(class)s_country_format"
             ),
             # A location exists exactly when its confidence says so.
             models.CheckConstraint(
@@ -77,9 +79,21 @@ class Address(TenantScopedModel, PublicIdModel, TimeStampedModel):
                     models.Q(location__isnull=True, geocode_confidence=GeocodeConfidence.NONE)
                     | models.Q(location__isnull=False, geocode_confidence=GeocodeConfidence.MANUAL)
                 ),
-                name="address_location_matches_confidence",
+                name="%(class)s_location_matches_confidence",
             ),
         ]
+
+
+class Address(TenantScopedModel, PublicIdModel, TimeStampedModel, PostalAddress):
+    """An entry in a customer's address book. Shipments snapshot it (D-API-20), so edits
+    never change shipment history."""
+
+    customer = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="addresses")
+    label = models.CharField(max_length=100, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta(PostalAddress.Meta):
+        verbose_name_plural = "addresses"
 
     def __str__(self) -> str:
         return self.label or self.line1

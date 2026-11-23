@@ -1,9 +1,8 @@
-from typing import Any, NoReturn
-
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
+from apps.core.models import AppendOnlyModel, AppendOnlyQuerySet
 from apps.tenancy.models import Company
 
 
@@ -23,21 +22,15 @@ class AuditAction(models.TextChoices):
     CUSTOMER_ARCHIVED = "customer.archived", "Customer archived"
     ADDRESS_CREATED = "address.created", "Address created"
     ADDRESS_ARCHIVED = "address.archived", "Address archived"
+    SHIPMENT_CREATED = "shipment.created", "Shipment created"
+    SHIPMENT_DRAFT_DELETED = "shipment.draft_deleted", "Draft shipment deleted"
+    SHIPMENT_TRACKING_TOKEN_ROTATED = (
+        "shipment.tracking_token_rotated",
+        "Shipment tracking token rotated",
+    )
 
 
-class AppendOnlyError(Exception):
-    pass
-
-
-class AuditLogQuerySet(models.QuerySet["AuditLog"]):
-    def update(self, **kwargs: Any) -> NoReturn:
-        raise AppendOnlyError("Audit log rows cannot be updated.")
-
-    def delete(self) -> NoReturn:
-        raise AppendOnlyError("Audit log rows cannot be deleted.")
-
-
-class AuditLog(models.Model):
+class AuditLog(AppendOnlyModel):
     """Append-only record of security-relevant operations (architecture §23).
 
     Written only through `apps.audit.services.record`.
@@ -58,18 +51,10 @@ class AuditLog(models.Model):
     request_id = models.CharField(max_length=64, blank=True)
     at = models.DateTimeField(default=timezone.now)
 
-    objects = AuditLogQuerySet.as_manager()
+    objects = AppendOnlyQuerySet.as_manager()
 
     class Meta:
         indexes = [models.Index(fields=["company", "-at"], name="auditlog_company_at")]
 
     def __str__(self) -> str:
         return f"{self.action} {self.object_type}:{self.object_id} at {self.at.isoformat()}"
-
-    def save(self, *args: Any, **kwargs: Any) -> None:
-        if not self._state.adding:
-            raise AppendOnlyError("Audit log rows cannot be updated.")
-        super().save(*args, **kwargs)
-
-    def delete(self, *args: Any, **kwargs: Any) -> NoReturn:
-        raise AppendOnlyError("Audit log rows cannot be deleted.")

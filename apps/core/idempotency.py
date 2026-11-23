@@ -79,6 +79,20 @@ def idempotent[V: APIView](method: ViewMethod[V]) -> ViewMethod[V]:
     return wrapper
 
 
+def idempotency_required[V: APIView](method: ViewMethod[V]) -> ViewMethod[V]:
+    """`@idempotent` where the key is mandatory: shipment creation and driver mutations
+    (architecture §20). A request without the header is rejected before any work."""
+    inner = idempotent(method)
+
+    @wraps(method)
+    def wrapper(view: V, request: Request, *args: Any, **kwargs: Any) -> Response:
+        if IDEMPOTENCY_KEY_HEADER not in request.headers:
+            raise DomainError(ErrorCode.IDEMPOTENCY_KEY_REQUIRED)
+        return inner(view, request, *args, **kwargs)
+
+    return wrapper
+
+
 def purge_expired_records() -> int:
     deleted, _ = IdempotencyRecord.objects.filter(
         created_at__lt=timezone.now() - RETENTION

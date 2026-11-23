@@ -40,26 +40,41 @@ from apps.tenancy.models import Branch, Company
 
 @transaction.atomic
 def create_company_with_owner(
-    *, company_name: str, currency: str, timezone: str, owner_email: str, owner_name: str
+    *,
+    company_name: str,
+    currency: str,
+    timezone: str,
+    branch_name: str,
+    branch_code: str,
+    owner_email: str,
+    owner_name: str,
 ) -> tuple[Company, User]:
-    """Onboard a tenant: the company, its first owner, and the owner's invite email.
+    """Onboard a tenant: the company, its first branch, its first owner (a member of that
+    branch), and the owner's invite email. Shipments need a branch, and no branch API
+    exists yet.
 
     The owner has no usable password until they follow the emailed link.
     """
     company = tenancy.create_company(name=company_name, currency=currency, timezone=timezone)
+    branch = tenancy.create_branch(company=company, name=branch_name, code=branch_code)
     audit.record(
         AuditAction.COMPANY_CREATED,
         company=company,
         object_type="company",
         object_id=str(company.public_id),
-        after={"name": company.name, "currency": company.currency, "timezone": company.timezone},
+        after={
+            "name": company.name,
+            "currency": company.currency,
+            "timezone": company.timezone,
+            "branch_code": branch.code,
+        },
     )
     owner = _create_invited_user(
         company=company,
         email=owner_email,
         full_name=owner_name,
         roles=[RoleCode.OWNER],
-        branches=[],
+        branches=[branch],
         actor=None,
         request=None,
     )
