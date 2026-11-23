@@ -19,6 +19,10 @@ class AuditAction(models.TextChoices):
     USER_BRANCHES_CHANGED = "user.branches_changed", "User branches changed"
     USER_DEACTIVATED = "user.deactivated", "User deactivated"
     USER_REACTIVATED = "user.reactivated", "User reactivated"
+    CUSTOMER_CREATED = "customer.created", "Customer created"
+    CUSTOMER_ARCHIVED = "customer.archived", "Customer archived"
+    ADDRESS_CREATED = "address.created", "Address created"
+    ADDRESS_ARCHIVED = "address.archived", "Address archived"
 
 
 class AppendOnlyError(Exception):

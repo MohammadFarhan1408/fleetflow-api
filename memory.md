@@ -7,15 +7,16 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Field          | Value                                                                          |
 | -------------- | ------------------------------------------------------------------------------ |
 | Application    | fleetflow-api (backend)                                                        |
-| Current phase  | Phase 2: Core Logistics Entities (plan approved 2026-11-23; no code yet)         |
-| Current branch | `docs/phase-1-complete`                                                        |
-| Overall status | Phase 1 COMPLETED (PRs #2–#5 merged, owner checkpoint passed). Phase 2 planning. |
+| Current phase  | Phase 2: Core Logistics Entities (PR 1/3 implemented 2026-11-23, awaiting review) |
+| Current branch | `feature/api-geo-customers`                                                    |
+| Overall status | Phase 1 COMPLETED. Phase 2 IN PROGRESS: PR 1/3 pushed for review.                |
 | Last updated   | 2026-11-23                                                                     |
 
 ## Completed work
 
 | Date       | Branch             | Work                                                                                        | Files                                                                                                                       | Tests run      | Result |
 | ---------- | ------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ |
+| 2026-11-23 | feature/api-geo-customers | Phase 2 PR 1/3. Infrastructure: GeoDjango engine, with `gdal-bin` in the image and CI. Tenancy: `Company.currency` (ISO 4217) and `timezone` (IANA); `Branch.code`; per-company `ServiceType` seeded by `create_company` and backfilled by a data migration. `create_company` requires `--currency` and `--timezone`. Customers: new `customers` app with `Customer` and `Address` (E.164, ISO country, optional manual coordinates); list/create/detail/update/archive APIs; `customers.view`/`customers.manage` seed; audit entries for create and archive. Cleanup: `current_user` moved to `accounts.authentication`, and `client_for` to the accounts test conftest | apps/tenancy/\*, apps/customers/\*, apps/accounts/{authentication,services,views}.py, apps/accounts/management/commands/create_company.py, apps/core/errors.py, apps/audit/models.py + 0002, config/settings/base.py, config/urls.py, Dockerfile, .github/workflows/ci.yml, tests/test_tenant_sweep.py, openapi/schema.yaml, CHANGELOG.md, docs | All inside the API container: ruff, mypy, `makemigrations --check`, pytest (293 tests, 98.9 % coverage; critical modules 99 %), pip-audit (clean), schema validate. Migrations: applied to a dev DB holding Phase 1 data (2 companies, 1 branch → USD/UTC, `B1`, 3 service types each), reversed to Phase 1 state and reapplied. Manual Compose run: `create_company --currency eur --timezone Europe/Berlin` seeds 3 service types, and an invalid currency is rejected. Login, create a customer (idempotent replay 201), add an address with coordinates (`manual`), archive the customer (the address archive cascades, so a later address PATCH gets 409) | All pass locally. CI pending |
 | 2026-11-22 | feature/api-users | Phase 1 PR 4/4: users API (list, detail, invite, patch) with ownership guards and company-row lock; `HasRequiredPermission` (method → codename, 405 for unimplemented methods); cursor pagination by public ID; `@idempotent` + `IdempotencyRecord` + daily purge; tenant isolation sweep; CI gates (overall coverage ≥ 85 %, security-critical modules ≥ 95 %, CHANGELOG entry on schema change); Phase 1 security review fixes (service-level tenant check in `update_user`, production JWT key ≥ 32 chars) | apps/accounts/\*, apps/core/idempotency.py, apps/core/models.py, apps/core/pagination.py, apps/core/tasks.py, tests/test_tenant_sweep.py, .github/workflows/ci.yml, config/settings/\*, CHANGELOG.md, openapi/schema.yaml | ruff, mypy, makemigrations --check, pytest (197 tests, 3 consecutive full runs green), coverage gates (overall 98 %, critical modules 99 %), pip-audit, schema validate; mutation checks: removing the company lock fails the owner-race test 3/3, removing tenant scoping fails the sweep | All pass locally. CI pending |
 | 2026-11-22 | feature/api-auth (merged, PR #4) | Phase 1 PR 3/4: login, refresh (rotation, 30 s reuse grace, family revocation), logout, password reset and confirm (also completes invites), `/me`; JWT authentication through the token family; login throttle and cross-IP lockout; reset/refresh throttles; daily token purge task; JSON 400/403 Django handlers; CHANGELOG.md | apps/accounts/\*, apps/core/errors.py, apps/core/views.py, apps/core/serializers.py, config/\*, CHANGELOG.md, openapi/schema.yaml | ruff, mypy, makemigrations --check, pytest (136 tests, 99 % coverage, auth modules 100 %), pip-audit, schema validate; mutation checks (grace window, family revocation, lockout, company suspension each fail tests when broken); manual end-to-end in Compose (invite → set password → login → `/me` → refresh → reuse after 31 s → logout; 426 via `DRIVER_APP_MIN_VERSION`) | All pass locally. CI pending |
 | 2026-11-22 | feature/api-foundation (merged, PR #3) | Phase 1 PR 2/4: error registry and envelope (`core/errors.py`, DRF exception handler, JSON 404/500), request ID middleware, 426 app-version middleware, `PublicIdModel` (UUIDv7), tenancy (`Company`, `Branch`, `TenantScopedModel`), custom `User` (email login, one company), `Role`/`Permission` seeded by data migration, append-only `AuditLog` + `audit.services.record`, invite email task, `create_company` command; removed Django admin, sessions, messages; DRF JSON-only with no implicit Session/Basic auth | apps/core/\*, apps/tenancy/\*, apps/audit/\*, apps/accounts/\*, config/settings/\*, config/urls.py, .env.example, pyproject.toml | ruff, mypy, makemigrations --check, pytest (80 tests, 98 % coverage), pip-audit, schema validate; manual: `create_company` in Compose, invite delivered by worker, duplicate email rejected | All pass locally. CI pending |
@@ -33,8 +34,8 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Phase 1 PR 4/4: users API, idempotency, tenant sweep, CI gates | feature/api-users | Merged (PR #5) | — | — |
 | Phase 1 checkpoint (owner review of the auth flow and security review results) | — | Passed 2026-11-23 | — | — |
 | Phase 2 plan | — | Approved 2026-11-23 (phases.md, D-API-18 to D-API-21) | — | — |
-| Phase 2 PR 1/3: geo engine, company currency/timezone, branch code, service types, customers and addresses | feature/api-geo-customers | Not started | — | `docs/phase-1-complete` merged |
-| Phase 2 PR 2/3: shipments, items, address snapshots, tracking numbers and token, create/list/detail, draft edit/delete | feature/api-shipments | Not started | — | PR 1 merged |
+| Phase 2 PR 1/3: geo engine, company currency/timezone, branch code, service types, customers and addresses | feature/api-geo-customers | Pushed, PR awaiting owner review | — | — |
+| Phase 2 PR 2/3: shipments, items, address snapshots, tracking numbers and token, create/list/detail, draft edit/delete, branch-scoping helper and `shipments.*` permissions (D-API-22) | feature/api-shipments | Not started | — | PR 1 merged |
 | Phase 2 PR 3/3: status machine, manual transitions, timeline, consistency check, public tracking | feature/api-shipment-status | Not started | — | PR 2 merged |
 
 ## Decisions
@@ -65,6 +66,7 @@ Factual record only. Update it after every substantial task, dependency or archi
 | D-API-19 | Global operation: E.164 phone format check (no phonenumbers dependency), ISO 3166-1 alpha-2 country on addresses, free-text postal codes, per-company ISO 4217 currency and IANA timezone | Launch countries not fixed | Single-country strict validation | Works anywhere without per-country rules | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | `create_company` gains currency and timezone |
 | D-API-20 | Per-company `ServiceType` table with seeded defaults; shipments snapshot pickup and delivery addresses into immutable `ShipmentAddress` rows | Service types and address history were open | Fixed enum; reference mutable address rows | Each carrier defines its own services; history never changes when the address book is edited | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | Admin service-type settings screen later |
 | D-API-21 | Phase 2 scope rules. **Transitions:** only manual ones (confirm, cancel, recovery, admin correction) are exposed in Phase 2. **Branch scoping:** shipments belong to an origin branch; users see their own branches unless they hold `shipments.all_branches`. **Shape:** one `ShipmentItem` per parcel (no quantity), 1–500 items, total weight above 0 and up to 30,000 kg; only drafts are editable. **Dependencies:** django-filter and hypothesis (dev). **Checks run inside the API container** (GDAL). **Role permissions:** owner and admin get everything; ops_manager everything except `service_types.manage`; dispatcher customers.view plus shipments view, create and cancel (own branches); customer_service customers view and manage plus shipments view, create and cancel; warehouse_staff and fleet_manager shipments.view; finance and viewer customers.view and shipments.view; driver nothing yet | Phase 2 planning | Expose all transitions now; quantity per item | Later phases own their transitions' preconditions (scans, routes, POD) | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | Admin and driver apps build on the status enum (owner sign-off at the Phase 2 checkpoint) |
+| D-API-22 | Phase 2 PR 1 adjustments. **Scope:** the branch-scoping helper and `shipments.*` permissions move to PR 2, and `service_types.manage` to the PR that adds its endpoint. They land where they are first used, as in D-API-13. **ServiceType placement:** `ServiceType` lives in `tenancy`, because `create_company` seeds it and tenancy cannot import higher modules. **Seed values:** `standard` and `express` (30 kg, 120 × 80 × 80 cm) and `freight` (1000 kg, 240 × 120 × 220 cm), all per parcel. **Validation:** full ISO 4217 (circulating) and ISO 3166-1 alpha-2 code lists, with no dependency. **Backfill:** existing companies get USD/UTC and existing branches get `B<id>`; only dev data existed (D-API-6) | Unused code in PR 1; module dependency direction | Follow the plan literally; ServiceType in `shipments` | No speculative code; keeps architecture §5 intact | 2026-11-23 | feature/api-geo-customers | APPROVED (owner, scope and seed values 2026-11-23) | A real DB would need correct currency/timezone set before migrating |
 | D-WS-3  | Engineering standards added: principles and definition of done in CLAUDE.md; enforceable detail merged into rules.md §1–5, §8 and new §10 (constants and configuration) | Owner-supplied engineering standards                  | Paste the full text into CLAUDE.md | Avoids duplicating existing rules and keeps CLAUDE.md a short entry point; frontend-only items (TypeScript, ESLint, UI styling) omitted for this backend repo | 2026-11-21 | main   | APPROVED (owner) | All future API work                       |
 
 ## Dependencies added/changed
@@ -89,6 +91,8 @@ Installed 2026-11-22 on `feature/api-setup` (exact pins in `uv.lock`):
 | djangorestframework-simplejwt (+ PyJWT) | 5.5.1 (2.15.1) | runtime | JWT signing and verification only (D-API-14); declares Django 5.2 support, MIT, maintained by Jazzband. Added 2026-11-22 on `feature/api-auth` |
 | factory-boy (+ Faker) | 3.3.3 (40.63.0) | dev | Model factories (architecture §26.1); added 2026-11-22 on `feature/api-foundation` |
 | pip-audit | 2.10.1 | dev | Dependency vulnerability audit |
+
+No Python dependency added in Phase 2 PR 1. The image and CI gained the Debian/Ubuntu `gdal-bin` package (GDAL 3.10.3 and GEOS 3.13.1 in the image) for GeoDjango.
 
 Deferred to the phase that needs them: simplejwt, factory_boy (Phase 1); structlog, sentry-sdk (Phase 1 or later); django-storages, boto3 (Phase 3); channels (Phase 7); gunicorn (Phase 11).
 
@@ -133,7 +137,11 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ### docs/phase-1-complete
 
-- Status: Ready for PR. Work: mark Phase 1 COMPLETED and record the owner's approval of D-API-7–9 and D-API-12–17.
+- Status: Merged to `main` (PR #6, `096aa21`). Work: mark Phase 1 COMPLETED and record the Phase 2 plan.
+
+### feature/api-geo-customers
+
+- Status: Pushed, PR open for owner review. Work: Phase 2 PR 1/3. Checks pass inside the API container; CI not yet observed.
 
 
 ## Known issues
@@ -144,6 +152,30 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 | PostGIS image tag for PG18 not yet pinned                                                        | Low      | feature/api-setup | Resolved | Pinned `postgis/postgis:18-3.6` |
 
 ## Security reviews
+
+### Phase 2 PR 1 (2026-11-23, `fleetflow-security-review` checklist, `feature/api-geo-customers` diff)
+
+| Finding | Severity | Status |
+|---|---|---|
+| Services re-read locked rows through the unscoped `.objects` manager after the company check (rules.md §2 asks for the tenant-scoped manager) | Low | Fixed: the re-reads start from `for_company(actor.company)` |
+
+Checked with no finding:
+- Tenancy:
+  - every selector starts from `for_company`
+  - the company comes from the user, never from request input (tested)
+  - cross-tenant IDs give 404 in views and services (tested)
+  - all 5 object routes and the customer list are in the tenant sweep
+- Access:
+  - `HasRequiredPermission` on every view, with the full role matrix tested
+  - no new unauthenticated endpoint
+- Data:
+  - explicit serializer fields
+  - audit entries carry IDs and the customer kind only (no names, phones or address text)
+  - validation errors never echo input
+- Concurrency: archive and update are serialized with `select_for_update`
+- Dependencies: `pip-audit` clean
+
+Not applicable: uploads, exports, OTP, public tracking, driver endpoints.
 
 ### Phase 1 checkpoint (2026-11-22, `fleetflow-security-review` checklist, whole Phase 1 diff)
 
@@ -169,5 +201,6 @@ Not applicable yet: driver-scoped endpoints, public tracking, uploads, exports, 
 
 ## Next steps
 
-1. Push and merge `docs/phase-1-complete` (this repo) and `docs/api-phase-1-contracts` (fleetflow-admin and fleetflow-driver-app); none are pushed yet.
-2. Start Phase 2 PR 1/3 on `feature/api-geo-customers` per phases.md, running checks inside the API container (D-API-21).
+1. Owner reviews and merges `feature/api-geo-customers` (Phase 2 PR 1/3).
+2. The owner records the customers contract in fleetflow-admin `memory.md` (owner-handled, 2026-11-23). The sibling `docs/api-phase-1-contracts` branches are still local; neither sibling repo has a git remote yet.
+3. Start Phase 2 PR 2/3 on `feature/api-shipments`, including the branch-scoping helper and `shipments.*` permissions (D-API-22).

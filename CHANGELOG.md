@@ -4,6 +4,30 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: customers and address book (Phase 2 PR 1)
+
+- **Customers.** Each response has `public_id`, `kind` (`individual` or `business`), `name`, `email`, `phone`, `archived_at`, `created_at` and `updated_at`.
+  - `GET /api/v1/customers/` (`customers.view`): cursor-paginated, newest first. Archived customers are hidden unless `?include_archived=true`. `?search=` matches the name case-insensitively.
+  - `POST /api/v1/customers/` (`customers.manage`) `{kind, name, email?, phone?}` → `201`. Optional `Idempotency-Key`.
+  - `GET /api/v1/customers/{public_id}/` (`customers.view`).
+  - `PATCH /api/v1/customers/{public_id}/` (`customers.manage`), any of the create fields → `200`. Optional `Idempotency-Key`.
+  - `POST /api/v1/customers/{public_id}/archive/` (`customers.manage`) → `200`. Also archives all of the customer's addresses. Repeating it is a no-op. There is no hard delete.
+- **Addresses.** Each response has `public_id`, `label`, `contact_name`, `phone`, `line1`, `line2`, `city`, `region`, `postal_code`, `country`, `latitude`, `longitude`, `geocode_confidence`, `archived_at`, `created_at` and `updated_at`.
+  - `GET /api/v1/customers/{customer_id}/addresses/` (`customers.view`): paginated. Archived addresses are hidden unless `?include_archived=true`.
+  - `POST /api/v1/customers/{customer_id}/addresses/` (`customers.manage`) → `201`.
+  - `GET` and `PATCH /api/v1/customers/{customer_id}/addresses/{public_id}/`.
+  - `POST /api/v1/customers/{customer_id}/addresses/{public_id}/archive/` → `200`, idempotent.
+- **Formats** (no geocoding provider yet):
+  - `phone` uses E.164 (`+14155550123`) or is empty.
+  - `country` is ISO 3166-1 alpha-2. Input is case-insensitive; responses are uppercase.
+  - `postal_code` is free text.
+  - `latitude` and `longitude` are optional numbers. Send both or neither. On PATCH, both `null` removes them, and omitting both keeps the stored point.
+  - `geocode_confidence` is `manual` when coordinates were supplied and `none` otherwise. A geocoding provider may add other values later.
+- **New error codes:** `customer.archived` (409: change to an archived customer, or a new address for one) and `address.archived` (409).
+- **New permissions in `/me`:**
+  - `customers.view`: owner, admin, ops_manager, dispatcher, customer_service, finance and viewer
+  - `customers.manage`: owner, admin, ops_manager and customer_service
+
 ### api-additive: users API and idempotency (Phase 1)
 
 - `GET /api/v1/users/` (`users.view`) → cursor-paginated `{next, previous, results[]}`, newest first, `?page_size=` up to 100. Each result has:

@@ -16,6 +16,7 @@ from rest_framework.test import APIClient
 from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode
 from apps.accounts.tests.conftest import login
+from apps.customers.factories import AddressFactory, CustomerFactory
 from apps.tenancy.factories import CompanyFactory
 from apps.tenancy.models import Company
 
@@ -27,17 +28,49 @@ def _user_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return {"public_id": user.public_id}, [str(user.public_id), user.email]
 
 
+def _customer_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    customer = CustomerFactory.create(company=company, name="Company A Customer")
+    return {"public_id": customer.public_id}, [str(customer.public_id), customer.name]
+
+
+def _customer_addresses_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    kwargs, secrets = _address_in(company)
+    return {"customer_id": kwargs["customer_id"]}, secrets
+
+
+def _address_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    address = AddressFactory.create(customer__company=company, line1="1 Company A Street")
+    kwargs = {"customer_id": address.customer.public_id, "public_id": address.public_id}
+    return kwargs, [str(address.public_id), address.line1, address.customer.name]
+
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
+    "customer-detail": _customer_in,
+    "customer-archive": _customer_in,
+    "customer-address-list": _customer_addresses_in,
+    "customer-address-detail": _address_in,
+    "customer-address-archive": _address_in,
 }
 
 # URL name → strings in company A that must never appear in company B's list response.
 LIST_ROUTES: dict[str, ObjectFactory] = {
     "user-list": _user_in,
+    "customer-list": _customer_in,
 }
 
-MUTATING_BODY = {"full_name": "pwned", "roles": ["owner"], "is_active": False}
+# Valid for users, customers and addresses alike, so each route reaches its object lookup.
+MUTATING_BODY = {
+    "full_name": "pwned",
+    "roles": ["owner"],
+    "is_active": False,
+    "name": "pwned",
+    "kind": "individual",
+    "line1": "pwned",
+    "city": "pwned",
+    "country": "US",
+}
 
 
 def _api_routes() -> Iterator[tuple[str, URLPattern]]:

@@ -40,19 +40,19 @@ from apps.tenancy.models import Branch, Company
 
 @transaction.atomic
 def create_company_with_owner(
-    *, company_name: str, owner_email: str, owner_name: str
+    *, company_name: str, currency: str, timezone: str, owner_email: str, owner_name: str
 ) -> tuple[Company, User]:
     """Onboard a tenant: the company, its first owner, and the owner's invite email.
 
     The owner has no usable password until they follow the emailed link.
     """
-    company = tenancy.create_company(name=company_name)
+    company = tenancy.create_company(name=company_name, currency=currency, timezone=timezone)
     audit.record(
         AuditAction.COMPANY_CREATED,
         company=company,
         object_type="company",
         object_id=str(company.public_id),
-        after={"name": company.name},
+        after={"name": company.name, "currency": company.currency, "timezone": company.timezone},
     )
     owner = _create_invited_user(
         company=company,

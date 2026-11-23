@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode, TokenFamily, User
-from apps.accounts.tests.conftest import ME_URL, login
+from apps.accounts.tests.conftest import ME_URL, client_for
 from apps.audit.models import AuditAction, AuditLog
 from apps.tenancy.factories import BranchFactory, CompanyFactory
 from apps.tenancy.models import Company
@@ -18,14 +18,6 @@ USERS_URL = "/api/v1/users/"
 
 def detail_url(user: User) -> str:
     return f"{USERS_URL}{user.public_id}/"
-
-
-def client_for(user: User) -> APIClient:
-    """An API client authenticated as `user` through the real login flow."""
-    client = APIClient()
-    access = login(client, user.email).json()["access"]
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
-    return client
 
 
 @pytest.fixture

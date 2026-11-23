@@ -13,6 +13,8 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser: ArgumentParser) -> None:
         parser.add_argument("--name", required=True, help="Company name")
+        parser.add_argument("--currency", required=True, help="ISO 4217 code, e.g. EUR")
+        parser.add_argument("--timezone", required=True, help="IANA timezone, e.g. Europe/Berlin")
         parser.add_argument("--owner-email", required=True, help="Owner's login email")
         parser.add_argument("--owner-name", required=True, help="Owner's full name")
 
@@ -20,6 +22,8 @@ class Command(BaseCommand):
         try:
             company, owner = create_company_with_owner(
                 company_name=options["name"],
+                currency=options["currency"],
+                timezone=options["timezone"],
                 owner_email=options["owner_email"],
                 owner_name=options["owner_name"],
             )

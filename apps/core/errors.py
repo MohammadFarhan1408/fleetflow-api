@@ -51,6 +51,8 @@ class ErrorCode(StrEnum):
     USER_CANNOT_MODIFY_SELF = "user.cannot_modify_self"
     USER_OWNER_REQUIRED = "user.owner_required"
     USER_LAST_OWNER = "user.last_owner"
+    CUSTOMER_ARCHIVED = "customer.archived"
+    ADDRESS_ARCHIVED = "address.archived"
     SERVER_ERROR = "server_error"
 
 
@@ -111,6 +113,8 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.USER_LAST_OWNER: ErrorSpec(
         409, ErrorType.CONFLICT, "The company must keep at least one active owner"
     ),
+    ErrorCode.CUSTOMER_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Customer is archived"),
+    ErrorCode.ADDRESS_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Address is archived"),
     ErrorCode.SERVER_ERROR: ErrorSpec(500, ErrorType.SERVER, "Internal server error"),
 }
 
