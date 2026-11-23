@@ -12,7 +12,7 @@ from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode, User
 from apps.accounts.tasks import send_invite_email
 from apps.audit.models import AuditAction, AuditLog
-from apps.tenancy.models import Company
+from apps.tenancy.models import Company, ServiceType
 
 pytestmark = pytest.mark.django_db
 
@@ -23,6 +23,8 @@ def run(**options: str) -> None:
     call_command(
         "create_company",
         name=options.get("name", "Acme Logistics"),
+        currency=options.get("currency", "eur"),
+        timezone=options.get("timezone", "Europe/Berlin"),
         owner_email=options.get("owner_email", "Owner@Acme.example"),
         owner_name=options.get("owner_name", "Olivia Owner"),
     )
@@ -35,6 +37,9 @@ def test_creates_company_owner_audit_and_invite(
         run()
 
     company = Company.objects.get(name="Acme Logistics")
+    assert (company.currency, company.timezone) == ("EUR", "Europe/Berlin")
+    seeded = ServiceType.objects.for_company(company).values_list("code", flat=True)
+    assert sorted(seeded) == ["express", "freight", "standard"]
     owner = User.objects.get(email="owner@acme.example")
     assert owner.company == company
     assert list(owner.roles.values_list("code", flat=True)) == [RoleCode.OWNER]
@@ -69,6 +74,22 @@ def test_blank_company_name_is_rejected() -> None:
         run(name="   ")
 
     assert not User.objects.filter(email="owner@acme.example").exists()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{"currency": "XYZ"}, {"currency": "EURO"}, {"timezone": "Mars/Base"}, {"timezone": "utc"}],
+)
+def test_invalid_currency_or_timezone_is_rejected(options: dict[str, str]) -> None:
+    with pytest.raises(CommandError):
+        run(**options)
+
+    assert not Company.objects.filter(name="Acme Logistics").exists()
+
+
+def test_currency_and_timezone_are_required() -> None:
+    with pytest.raises(CommandError, match="--currency"):
+        call_command("create_company", "--name=Acme", "--owner-email=o@a.example", "--owner-name=O")
 
 
 def test_invite_not_sent_to_deactivated_user() -> None:

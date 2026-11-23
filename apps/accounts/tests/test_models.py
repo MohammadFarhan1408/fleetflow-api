@@ -75,12 +75,17 @@ def test_all_builtin_roles_are_seeded() -> None:
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
-        (RoleCode.OWNER, {"users.view", "users.manage"}),
-        (RoleCode.ADMIN, {"users.view", "users.manage"}),
-        (RoleCode.OPS_MANAGER, {"users.view"}),
-        (RoleCode.DISPATCHER, set()),
+        # Phase 1 users permissions; customers permissions per memory D-API-21.
+        (RoleCode.OWNER, {"users.view", "users.manage", "customers.view", "customers.manage"}),
+        (RoleCode.ADMIN, {"users.view", "users.manage", "customers.view", "customers.manage"}),
+        (RoleCode.OPS_MANAGER, {"users.view", "customers.view", "customers.manage"}),
+        (RoleCode.DISPATCHER, {"customers.view"}),
+        (RoleCode.CUSTOMER_SERVICE, {"customers.view", "customers.manage"}),
+        (RoleCode.FINANCE, {"customers.view"}),
+        (RoleCode.VIEWER, {"customers.view"}),
+        (RoleCode.WAREHOUSE_STAFF, set()),
+        (RoleCode.FLEET_MANAGER, set()),
         (RoleCode.DRIVER, set()),
-        (RoleCode.VIEWER, set()),
     ],
 )
 def test_seeded_role_permissions(role: RoleCode, expected: set[str]) -> None:

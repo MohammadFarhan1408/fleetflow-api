@@ -8,6 +8,8 @@ class CompanyFactory(factory.django.DjangoModelFactory[Company]):
         model = Company
 
     name = factory.Sequence(lambda n: f"Company {n}")
+    currency = "USD"
+    timezone = "UTC"
 
 
 class BranchFactory(factory.django.DjangoModelFactory[Branch]):
@@ -16,3 +18,4 @@ class BranchFactory(factory.django.DjangoModelFactory[Branch]):
 
     company = factory.SubFactory(CompanyFactory)
     name = factory.Sequence(lambda n: f"Branch {n}")
+    code = factory.Sequence(lambda n: f"BR{n}")

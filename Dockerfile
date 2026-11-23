@@ -11,6 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# GeoDjango needs GDAL and GEOS (architecture §16); gdal-bin pulls in both libraries.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gdal-bin \
+    && rm -rf /var/lib/apt/lists/*
+
 # Dependencies first so code changes don't invalidate this layer.
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --locked --no-install-project

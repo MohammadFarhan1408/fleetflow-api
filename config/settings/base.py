@@ -29,12 +29,14 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.staticfiles",
+    "django.contrib.gis",
     "rest_framework",
     "drf_spectacular",
     "apps.core",
     "apps.tenancy",
     "apps.audit",
     "apps.accounts",
+    "apps.customers",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -67,6 +69,8 @@ TEMPLATES = [
     },
 ]
 
+# GeoDjango engine for geometry fields (architecture §16, memory D-API-8 follow-up).
+DATABASES["default"]["ENGINE"] = "django.contrib.gis.db.backends.postgis"
 DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=60)
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

@@ -1,4 +1,6 @@
 from django.core.exceptions import ValidationError
+from rest_framework.exceptions import NotAuthenticated
+from rest_framework.request import Request
 from rest_framework_simplejwt import authentication
 from rest_framework_simplejwt.exceptions import ExpiredTokenError, TokenError
 from rest_framework_simplejwt.settings import api_settings
@@ -7,6 +9,15 @@ from rest_framework_simplejwt.tokens import AccessToken, Token
 from apps.accounts.models import TokenFamily, User
 from apps.accounts.tokens import FAMILY_CLAIM, token_error
 from apps.core.errors import DomainError, ErrorCode
+
+
+def current_user(request: Request) -> User:
+    """The authenticated FleetFlow user. IsAuthenticated normally rejects anything else
+    first; this explicit check keeps that true even under `python -O`."""
+    user = request.user
+    if not isinstance(user, User):
+        raise NotAuthenticated
+    return user
 
 
 def ensure_account_usable(user: User) -> None:

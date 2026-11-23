@@ -121,7 +121,7 @@ def test_me_returns_session_bootstrap(
     }
     assert body["company"] == {"public_id": str(user.company.public_id), "name": user.company.name}
     assert body["roles"] == ["dispatcher"]
-    assert body["permissions"] == []
+    assert body["permissions"] == ["customers.view"]
     assert body["branches"] == []
 
 
@@ -131,7 +131,12 @@ def test_me_lists_permissions_for_owner(api_client: APIClient) -> None:
 
     body = bearer(api_client, access).get(ME_URL).json()
 
-    assert body["permissions"] == ["users.manage", "users.view"]
+    assert body["permissions"] == [
+        "customers.manage",
+        "customers.view",
+        "users.manage",
+        "users.view",
+    ]
 
 
 def test_me_query_count(

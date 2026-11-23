@@ -29,3 +29,11 @@ def tokens(api_client: APIClient, user: User) -> dict[str, str]:
     assert response.status_code == 200, response.content
     body: dict[str, str] = response.json()
     return body
+
+
+def client_for(user: User) -> APIClient:
+    """An API client authenticated as `user` through the real login flow."""
+    client = APIClient()
+    access = login(client, user.email).json()["access"]
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+    return client

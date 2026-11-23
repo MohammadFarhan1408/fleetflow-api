@@ -8,6 +8,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("health/live", core_views.health_live, name="health-live"),
     path("health/ready", core_views.health_ready, name="health-ready"),
     path("api/v1/", include("apps.accounts.urls")),
+    path("api/v1/", include("apps.customers.urls")),
 ]
 
 if settings.API_DOCS_ENABLED:

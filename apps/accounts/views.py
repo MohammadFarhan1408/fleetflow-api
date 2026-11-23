@@ -5,7 +5,6 @@ from typing import Any
 from django.db.models import QuerySet
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.exceptions import NotAuthenticated
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
@@ -13,6 +12,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts import selectors, services
+from apps.accounts.authentication import current_user
 from apps.accounts.models import RoleCode, User
 from apps.accounts.permissions import (
     USERS_MANAGE,
@@ -152,15 +152,6 @@ class MeView(APIView):
         return Response(MeSerializer(payload).data)
 
 
-def _current_user(request: Request) -> User:
-    """The authenticated FleetFlow user. IsAuthenticated normally rejects anything else
-    first; this explicit check keeps that true even under `python -O`."""
-    user = request.user
-    if not isinstance(user, User):
-        raise NotAuthenticated
-    return user
-
-
 class UserListCreateView(ListAPIView[User]):
     """List the company's users (`users.view`) or invite a new one (`users.manage`)."""
 
@@ -169,7 +160,7 @@ class UserListCreateView(ListAPIView[User]):
     serializer_class = UserSerializer
 
     def get_queryset(self) -> QuerySet[User]:
-        return selectors.users_for_company(_current_user(self.request).company)
+        return selectors.users_for_company(current_user(self.request).company)
 
     @extend_schema(
         request=UserInviteSerializer,
@@ -181,7 +172,7 @@ class UserListCreateView(ListAPIView[User]):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         user = services.invite_user(
-            actor=_current_user(request),
+            actor=current_user(request),
             email=data["email"],
             full_name=data["full_name"],
             roles=[RoleCode(code) for code in data["roles"]],
@@ -200,7 +191,7 @@ class UserDetailView(APIView):
 
     @extend_schema(responses={200: UserSerializer, 401: ERROR, 403: ERROR, 404: ERROR})
     def get(self, request: Request, public_id: uuid.UUID) -> Response:
-        user = selectors.get_company_user(_current_user(request).company, public_id)
+        user = selectors.get_company_user(current_user(request).company, public_id)
         return Response(UserSerializer(user).data)
 
     @extend_schema(
@@ -217,7 +208,7 @@ class UserDetailView(APIView):
     )
     @idempotent
     def patch(self, request: Request, public_id: uuid.UUID) -> Response:
-        actor = _current_user(request)
+        actor = current_user(request)
         target = selectors.get_company_user(actor.company, public_id)
         serializer = UserUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
