@@ -7,7 +7,7 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Field          | Value                                                                          |
 | -------------- | ------------------------------------------------------------------------------ |
 | Application    | fleetflow-api (backend)                                                        |
-| Current phase  | Phase 2: Core Logistics Entities (planning; Phase 1 completed 2026-11-23)         |
+| Current phase  | Phase 2: Core Logistics Entities (plan approved 2026-11-23; no code yet)         |
 | Current branch | `docs/phase-1-complete`                                                        |
 | Overall status | Phase 1 COMPLETED (PRs #2–#5 merged, owner checkpoint passed). Phase 2 planning. |
 | Last updated   | 2026-11-23                                                                     |
@@ -32,7 +32,10 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Phase 1 PR 3/4: auth flows, throttles, lockout, `/me` | feature/api-auth | Merged (PR #4) | — | — |
 | Phase 1 PR 4/4: users API, idempotency, tenant sweep, CI gates | feature/api-users | Merged (PR #5) | — | — |
 | Phase 1 checkpoint (owner review of the auth flow and security review results) | — | Passed 2026-11-23 | — | — |
-| Phase 2 plan | — | Being prepared | — | Owner approval of the plan |
+| Phase 2 plan | — | Approved 2026-11-23 (phases.md, D-API-18 to D-API-21) | — | — |
+| Phase 2 PR 1/3: geo engine, company currency/timezone, branch code, service types, customers and addresses | feature/api-geo-customers | Not started | — | `docs/phase-1-complete` merged |
+| Phase 2 PR 2/3: shipments, items, address snapshots, tracking numbers and token, create/list/detail, draft edit/delete | feature/api-shipments | Not started | — | PR 1 merged |
+| Phase 2 PR 3/3: status machine, manual transitions, timeline, consistency check, public tracking | feature/api-shipment-status | Not started | — | PR 2 merged |
 
 ## Decisions
 
@@ -58,6 +61,10 @@ Factual record only. Update it after every substantial task, dependency or archi
 | D-API-15 | Auth endpoints answer with trailing slashes (`/api/v1/auth/login/`) | Consistency with architecture §6 resource paths | Slashless | One convention for every path | 2026-11-22 | feature/api-auth | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Driver-app docs listed `/api/v1/auth/login` (recorded in its memory.md) |
 | D-API-16 | Idempotency stores only successful responses; failed requests roll back their record | Architecture §20 does not specify which statuses are stored | Store and replay 4xx too (Stripe-style) | Failed requests have no side effects, so re-running them is equivalent and simpler; the record shares the mutation's transaction | 2026-11-22 | feature/api-users | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Clients may retry a failed request with the same key |
 | D-API-17 | Users API ownership rules: no self-change of roles, branches or status; only owners grant or revoke owner or change an owner's access; at least one active owner; edits serialized by a company-row lock | Privilege-escalation and lock-out risks in user management | Fewer guards | Prevents escalation, self-lockout and the "two owners demote each other" race (tested) | 2026-11-22 | feature/api-users | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Admin users screen must surface these error codes |
+| D-API-18 | No geocoding provider in Phase 2: addresses take optional client-supplied coordinates with `geocode_confidence` `manual` or `none`; a provider can be added later behind one service function | Provider was NEEDS APPROVAL | Google, Mapbox, Nominatim | No paid service or dependency until needed | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | Routes (Phase 4) need coordinates; admin should offer a map pin |
+| D-API-19 | Global operation: E.164 phone format check (no phonenumbers dependency), ISO 3166-1 alpha-2 country on addresses, free-text postal codes, per-company ISO 4217 currency and IANA timezone | Launch countries not fixed | Single-country strict validation | Works anywhere without per-country rules | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | `create_company` gains currency and timezone |
+| D-API-20 | Per-company `ServiceType` table with seeded defaults; shipments snapshot pickup and delivery addresses into immutable `ShipmentAddress` rows | Service types and address history were open | Fixed enum; reference mutable address rows | Each carrier defines its own services; history never changes when the address book is edited | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | Admin service-type settings screen later |
+| D-API-21 | Phase 2 scope rules. **Transitions:** only manual ones (confirm, cancel, recovery, admin correction) are exposed in Phase 2. **Branch scoping:** shipments belong to an origin branch; users see their own branches unless they hold `shipments.all_branches`. **Shape:** one `ShipmentItem` per parcel (no quantity), 1–500 items, total weight above 0 and up to 30,000 kg; only drafts are editable. **Dependencies:** django-filter and hypothesis (dev). **Checks run inside the API container** (GDAL). **Role permissions:** owner and admin get everything; ops_manager everything except `service_types.manage`; dispatcher customers.view plus shipments view, create and cancel (own branches); customer_service customers view and manage plus shipments view, create and cancel; warehouse_staff and fleet_manager shipments.view; finance and viewer customers.view and shipments.view; driver nothing yet | Phase 2 planning | Expose all transitions now; quantity per item | Later phases own their transitions' preconditions (scans, routes, POD) | 2026-11-23 | docs/phase-1-complete | APPROVED (owner) | Admin and driver apps build on the status enum (owner sign-off at the Phase 2 checkpoint) |
 | D-WS-3  | Engineering standards added: principles and definition of done in CLAUDE.md; enforceable detail merged into rules.md §1–5, §8 and new §10 (constants and configuration) | Owner-supplied engineering standards                  | Paste the full text into CLAUDE.md | Avoids duplicating existing rules and keeps CLAUDE.md a short entry point; frontend-only items (TypeScript, ESLint, UI styling) omitted for this backend repo | 2026-11-21 | main   | APPROVED (owner) | All future API work                       |
 
 ## Dependencies added/changed
@@ -162,5 +169,5 @@ Not applicable yet: driver-scoped endpoints, public tracking, uploads, exports, 
 
 ## Next steps
 
-1. Merge `docs/phase-1-complete`.
-2. Owner approves the Phase 2 plan (customers, addresses, shipments, status machine, tracking events, public tracking token), then implementation starts.
+1. Push and merge `docs/phase-1-complete` (this repo) and `docs/api-phase-1-contracts` (fleetflow-admin and fleetflow-driver-app); none are pushed yet.
+2. Start Phase 2 PR 1/3 on `feature/api-geo-customers` per phases.md, running checks inside the API container (D-API-21).

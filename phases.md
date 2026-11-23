@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 2, NOT STARTED (planning)**. Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23.
+**Current phase: Phase 2, IN PROGRESS** (plan approved 2026-11-23; implementation not started). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23.
 
 ## Ordering and dependencies
 
@@ -56,7 +56,24 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 2: Core Logistics Entities
 
-- **Status**: NOT STARTED
+- **Status**: IN PROGRESS (plan approved by the owner 2026-11-23, decisions D-API-18 to D-API-21 in memory.md; no code yet)
+- **Approved delivery plan (3 PRs, merged in order):**
+  1. **`feature/api-geo-customers`**
+     - GeoDjango engine with GDAL in the image and CI; checks run inside the container.
+     - Company `currency` (ISO 4217) and `timezone` (IANA); Branch `code`.
+     - Per-company `ServiceType` (code, name, max weight, max dimensions), seeded for new companies and by a data migration for existing ones.
+     - `Customer` (individual or business, archived rather than deleted) and its address book, with list/create/update/archive APIs.
+     - Permission seed (role table in D-API-21) and the branch-scoping helper.
+  2. **`feature/api-shipments`**
+     - `Shipment`, `ShipmentItem` (one row per parcel, with its own barcode) and immutable `ShipmentAddress` snapshots for pickup and delivery.
+     - Tracking numbers `FF-<BRANCH>-<seq>` from a locked per-branch counter.
+     - Public tracking token: 128-bit, unique, rotatable.
+     - Create with a required `Idempotency-Key`; drafts can be edited and hard-deleted (audited).
+     - List and detail with django-filter filters and branch scoping; the first `TrackingEvent`.
+  3. **`feature/api-shipment-status`**
+     - Transition table and `transition()` with row lock plus `expected_status`.
+     - API endpoints for confirm, cancel, recovery and admin correction only; other edges are service-level until their phases.
+     - Timeline, nightly consistency check (log only, no auto-fix), public tracking endpoint, and hypothesis property tests.
 - **Goal**: shipments can be created and moved through the lifecycle.
 - **Scope**: Customer, business account, Address (with PostGIS point and geocode-confidence field; real geocoding provider NEEDS APPROVAL), Shipment, ShipmentItem, tracking-number generator, status machine service, TrackingEvent, public tracking token (read endpoint), shipment list filters, sorting and cursor pagination.
 - **Dependencies**: Phase 1.

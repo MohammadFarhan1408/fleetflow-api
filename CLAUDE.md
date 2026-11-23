@@ -1,6 +1,6 @@
 # fleetflow-api: Claude Code Instructions
 
-> **Phase 1 is COMPLETED. Phase 2 (Core Logistics Entities) is being planned:** do not implement Phase 2 code until the owner approves its plan. Check [phases.md](phases.md) for the current phase.
+> **Phase 2 (Core Logistics Entities) is IN PROGRESS** with an owner-approved plan of 3 PRs (see [phases.md](phases.md) and [memory.md](memory.md) §Current work). Implement only the next PR in that plan. Quality checks run inside the API container (`docker compose run --rm api ...`) because GeoDjango needs GDAL.
 
 ## Identity
 
