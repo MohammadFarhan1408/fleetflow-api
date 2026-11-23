@@ -1,6 +1,6 @@
 # fleetflow-api: Claude Code Instructions
 
-> **Phase 1 (Core Foundation) is in progress** as four sequential PRs (see [memory.md](memory.md) §Current work). Work only on Phase 1 scope; customers, shipments and later-phase modules wait for their phase. Check [phases.md](phases.md) for the current phase.
+> **Phase 1 is COMPLETED. Phase 2 (Core Logistics Entities) is being planned:** do not implement Phase 2 code until the owner approves its plan. Check [phases.md](phases.md) for the current phase.
 
 ## Identity
 

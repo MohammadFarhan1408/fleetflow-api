@@ -7,10 +7,10 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Field          | Value                                                                          |
 | -------------- | ------------------------------------------------------------------------------ |
 | Application    | fleetflow-api (backend)                                                        |
-| Current phase  | Phase 1: Core Foundation (in progress; Phase 0 completed 2026-11-22)               |
-| Current branch | `feature/api-users`                                                            |
-| Overall status | Phase 1 PRs 1–3 merged (#2–#4). PR 4/4 implemented; Phase 1 awaits checkpoint. |
-| Last updated   | 2026-11-22                                                                     |
+| Current phase  | Phase 2: Core Logistics Entities (planning; Phase 1 completed 2026-11-23)         |
+| Current branch | `docs/phase-1-complete`                                                        |
+| Overall status | Phase 1 COMPLETED (PRs #2–#5 merged, owner checkpoint passed). Phase 2 planning. |
+| Last updated   | 2026-11-23                                                                     |
 
 ## Completed work
 
@@ -30,8 +30,9 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Phase 1 PR 1/4: Python 3.14 + Phase 0 completion docs | chore/python-3.14 | Merged (PR #2) | — | — |
 | Phase 1 PR 2/4: errors, request ID, app version, tenancy, accounts models, RBAC seed, audit, `create_company` | feature/api-foundation | Merged (PR #3) | — | — |
 | Phase 1 PR 3/4: auth flows, throttles, lockout, `/me` | feature/api-auth | Merged (PR #4) | — | — |
-| Phase 1 PR 4/4: users API, idempotency, tenant sweep, CI gates | feature/api-users | Ready for PR | — | — |
-| Phase 1 checkpoint (owner review of the auth flow and security review results) | — | Waiting for owner | — | PR 4 merged |
+| Phase 1 PR 4/4: users API, idempotency, tenant sweep, CI gates | feature/api-users | Merged (PR #5) | — | — |
+| Phase 1 checkpoint (owner review of the auth flow and security review results) | — | Passed 2026-11-23 | — | — |
+| Phase 2 plan | — | Being prepared | — | Owner approval of the plan |
 
 ## Decisions
 
@@ -46,17 +47,17 @@ Factual record only. Update it after every substantial task, dependency or archi
 | D-API-4 | Realtime: Channels WS for admin only; driver uses REST plus push                                                                                                        | architecture §17                                      | WS for both, SSE, polling          | Mobile reliability and battery                                                                                                                                | 2026-11-21 | main   | PROPOSED         | Affects both clients                      |
 | D-API-5 | OpenAPI (drf-spectacular) as the contract source; clients generate types                                                                                                | architecture §25                                      | Hand-written types, shared package | Single source of truth across 3 repos                                                                                                                         | 2026-11-21 | main   | PROPOSED         | Both clients                              |
 | D-API-6 | Hosting target deferred to Phase 11 | architecture §24 | AWS ECS/RDS; Render/Railway/Fly | Not needed for local Compose and CI | 2026-11-22 | feature/api-setup | APPROVED (owner) | Production image hardening (gunicorn etc.) waits for it |
-| D-API-7 | uv manages Python and dependencies (`pyproject.toml` + `uv.lock`) | Phase 0 setup | pip-tools, Poetry | Fast, single tool, exact lockfile, installs the Python version | 2026-11-22 | feature/api-setup | PROPOSED | CI and Dockerfile use uv |
-| D-API-8 | Plain `postgresql` DB engine until Phase 2; PostGIS extension enabled by `core/0001_postgis` migration | Phase 0 smoke test needs PostGIS, not GeoDjango | GeoDjango engine now | Avoids GDAL/GEOS in image and CI until the first geometry field | 2026-11-22 | feature/api-setup | PROPOSED | Phase 2 switches to `django.contrib.gis.db.backends.postgis` and installs GDAL |
-| D-API-9 | Object storage service (MinIO) left out of Phase 0 Compose | MinIO stopped publishing community Docker images in late 2025; no storage code until Phase 3 | Pin an old MinIO image | Don't pin an unmaintained image for an unused service | 2026-11-22 | feature/api-setup | PROPOSED | Choose the local S3-compatible server in Phase 3 with django-storages |
+| D-API-7 | uv manages Python and dependencies (`pyproject.toml` + `uv.lock`) | Phase 0 setup | pip-tools, Poetry | Fast, single tool, exact lockfile, installs the Python version | 2026-11-22 | feature/api-setup | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | CI and Dockerfile use uv |
+| D-API-8 | Plain `postgresql` DB engine until Phase 2; PostGIS extension enabled by `core/0001_postgis` migration | Phase 0 smoke test needs PostGIS, not GeoDjango | GeoDjango engine now | Avoids GDAL/GEOS in image and CI until the first geometry field | 2026-11-22 | feature/api-setup | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Phase 2 switches to `django.contrib.gis.db.backends.postgis` and installs GDAL |
+| D-API-9 | Object storage service (MinIO) left out of Phase 0 Compose | MinIO stopped publishing community Docker images in late 2025; no storage code until Phase 3 | Pin an old MinIO image | Don't pin an unmaintained image for an unused service | 2026-11-22 | feature/api-setup | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Choose the local S3-compatible server in Phase 3 with django-storages |
 | D-API-10 | Python 3.14 runtime | UUIDv7 public IDs (architecture §6) need `uuid.uuid7()`, stdlib only from 3.14 | Stay on 3.13 + `uuid-utils` | No extra dependency; all deps resolve to 3.14 wheels (dry run 2026-11-22) | 2026-11-22 | chore/python-3.14 | APPROVED (owner) | Dockerfile, CI, .python-version |
 | D-API-11 | Phase 1 decisions: one company per user; companies created by `create_company` management command; 426 min app version in Phase 1; 30 s refresh-reuse grace window; RBAC in DB tables; minimal users API (list, detail, invite, patch) | Phase 1 planning | Multi-company membership; Django admin or public signup; strict reuse; code-defined roles; test-only views | See approved Phase 1 plan | 2026-11-22 | chore/python-3.14 | APPROVED (owner) | Admin and driver-app auth contract (recorded when PR 3 lands) |
-| D-API-12 | No Django admin, sessions, messages, superuser or staff flag; custom `User` extends `AbstractBaseUser` only | JWT-only API, RBAC is FleetFlow's own (D-API-11) | Keep admin for platform staff | Less attack surface; Django's permission tables would duplicate RBAC | 2026-11-22 | feature/api-foundation | PROPOSED | `createsuperuser` is not available; onboarding is `create_company`. API docs served only where `API_DOCS_ENABLED` (local) |
-| D-API-13 | Phase 1 plan adjustments: `TenantScopedModel` lives in `tenancy`; permission codenames, `HasPermission`, cursor pagination and `TokenFamily` land in the PR that first uses them (3 or 4) instead of PR 2; `factory-boy` added in PR 2 because its tests need it | Implementation of PR 2 | Follow the plan literally | Keeps the dependency direction clean and avoids unused code | 2026-11-22 | feature/api-foundation | PROPOSED | None on contracts |
-| D-API-14 | Own session tracking instead of simplejwt `token_blacklist`: `TokenFamily` + `RefreshTokenRecord` (jti only); access tokens authenticated through a non-revoked family (one query); `User.sessions_revoked_at` removed | simplejwt's `OutstandingToken` stores full refresh tokens, and its blacklist error cannot tell reuse apart; second-precision `iat` let a token from the same second as a password reset survive | Use `token_blacklist`; keep the `iat` cut-off | No replayable tokens at rest; logout, reuse and reset end access immediately; same query count per request | 2026-11-22 | feature/api-auth | PROPOSED | Clients: `auth.token_invalid` after logout or reset means log in again |
-| D-API-15 | Auth endpoints answer with trailing slashes (`/api/v1/auth/login/`) | Consistency with architecture §6 resource paths | Slashless | One convention for every path | 2026-11-22 | feature/api-auth | PROPOSED | Driver-app docs listed `/api/v1/auth/login` (recorded in its memory.md) |
-| D-API-16 | Idempotency stores only successful responses; failed requests roll back their record | Architecture §20 does not specify which statuses are stored | Store and replay 4xx too (Stripe-style) | Failed requests have no side effects, so re-running them is equivalent and simpler; the record shares the mutation's transaction | 2026-11-22 | feature/api-users | PROPOSED | Clients may retry a failed request with the same key |
-| D-API-17 | Users API ownership rules: no self-change of roles, branches or status; only owners grant or revoke owner or change an owner's access; at least one active owner; edits serialized by a company-row lock | Privilege-escalation and lock-out risks in user management | Fewer guards | Prevents escalation, self-lockout and the "two owners demote each other" race (tested) | 2026-11-22 | feature/api-users | PROPOSED | Admin users screen must surface these error codes |
+| D-API-12 | No Django admin, sessions, messages, superuser or staff flag; custom `User` extends `AbstractBaseUser` only | JWT-only API, RBAC is FleetFlow's own (D-API-11) | Keep admin for platform staff | Less attack surface; Django's permission tables would duplicate RBAC | 2026-11-22 | feature/api-foundation | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | `createsuperuser` is not available; onboarding is `create_company`. API docs served only where `API_DOCS_ENABLED` (local) |
+| D-API-13 | Phase 1 plan adjustments: `TenantScopedModel` lives in `tenancy`; permission codenames, `HasPermission`, cursor pagination and `TokenFamily` land in the PR that first uses them (3 or 4) instead of PR 2; `factory-boy` added in PR 2 because its tests need it | Implementation of PR 2 | Follow the plan literally | Keeps the dependency direction clean and avoids unused code | 2026-11-22 | feature/api-foundation | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | None on contracts |
+| D-API-14 | Own session tracking instead of simplejwt `token_blacklist`: `TokenFamily` + `RefreshTokenRecord` (jti only); access tokens authenticated through a non-revoked family (one query); `User.sessions_revoked_at` removed | simplejwt's `OutstandingToken` stores full refresh tokens, and its blacklist error cannot tell reuse apart; second-precision `iat` let a token from the same second as a password reset survive | Use `token_blacklist`; keep the `iat` cut-off | No replayable tokens at rest; logout, reuse and reset end access immediately; same query count per request | 2026-11-22 | feature/api-auth | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Clients: `auth.token_invalid` after logout or reset means log in again |
+| D-API-15 | Auth endpoints answer with trailing slashes (`/api/v1/auth/login/`) | Consistency with architecture §6 resource paths | Slashless | One convention for every path | 2026-11-22 | feature/api-auth | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Driver-app docs listed `/api/v1/auth/login` (recorded in its memory.md) |
+| D-API-16 | Idempotency stores only successful responses; failed requests roll back their record | Architecture §20 does not specify which statuses are stored | Store and replay 4xx too (Stripe-style) | Failed requests have no side effects, so re-running them is equivalent and simpler; the record shares the mutation's transaction | 2026-11-22 | feature/api-users | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Clients may retry a failed request with the same key |
+| D-API-17 | Users API ownership rules: no self-change of roles, branches or status; only owners grant or revoke owner or change an owner's access; at least one active owner; edits serialized by a company-row lock | Privilege-escalation and lock-out risks in user management | Fewer guards | Prevents escalation, self-lockout and the "two owners demote each other" race (tested) | 2026-11-22 | feature/api-users | APPROVED (owner, Phase 1 checkpoint 2026-11-23) | Admin users screen must surface these error codes |
 | D-WS-3  | Engineering standards added: principles and definition of done in CLAUDE.md; enforceable detail merged into rules.md §1–5, §8 and new §10 (constants and configuration) | Owner-supplied engineering standards                  | Paste the full text into CLAUDE.md | Avoids duplicating existing rules and keeps CLAUDE.md a short entry point; frontend-only items (TypeScript, ESLint, UI styling) omitted for this backend repo | 2026-11-21 | main   | APPROVED (owner) | All future API work                       |
 
 ## Dependencies added/changed
@@ -121,7 +122,11 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ### feature/api-users
 
-- Status: Ready for PR. Work: Phase 1 PR 4/4 (see Completed work). Tests: 197 pass locally. Production now requires `JWT_SIGNING_KEY` ≥ 32 characters. CI pending.
+- Status: Merged to `main` (PR #5, `ff45aca`). Work: Phase 1 PR 4/4. CI green on the PR.
+
+### docs/phase-1-complete
+
+- Status: Ready for PR. Work: mark Phase 1 COMPLETED and record the owner's approval of D-API-7–9 and D-API-12–17.
 
 
 ## Known issues
@@ -157,5 +162,5 @@ Not applicable yet: driver-scoped endpoints, public tracking, uploads, exports, 
 
 ## Next steps
 
-1. Push `feature/api-users`, open a PR, confirm CI is green, merge after approval.
-2. Owner Phase 1 checkpoint: review the auth flow and the security review below; then mark Phase 1 COMPLETED and plan Phase 2 (customers, addresses, shipments).
+1. Merge `docs/phase-1-complete`.
+2. Owner approves the Phase 2 plan (customers, addresses, shipments, status machine, tracking events, public tracking token), then implementation starts.

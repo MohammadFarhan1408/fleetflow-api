@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 1, IN PROGRESS** (Phase 0 COMPLETED 2026-11-22: PR #1 merged, CI green on the PR and on `main`.)
+**Current phase: Phase 2, NOT STARTED (planning)**. Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23.
 
 ## Ordering and dependencies
 
@@ -45,7 +45,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 1: Core Foundation
 
-- **Status**: IN PROGRESS. All 4 PRs implemented (#2, #3 and #4 merged; `feature/api-users` awaiting PR). The Phase 1 security review ran on 2026-11-22 (memory.md). Awaiting the owner's checkpoint review before Phase 2.
+- **Status**: COMPLETED (2026-11-23). PRs #2–#5 merged with CI green; security review recorded in memory.md; owner checkpoint passed.
 - **Goal**: secure multi-tenant identity.
 - **Scope**: Company, Branch, User (email login), Role/Permission seed, JWT login/refresh/logout with rotation and blacklist, password reset, throttles, tenant-scoped base manager, RBAC permission classes, AuditLog, error envelope, idempotency middleware, tenant isolation sweep test harness.
 - **Dependencies**: Phase 0.
