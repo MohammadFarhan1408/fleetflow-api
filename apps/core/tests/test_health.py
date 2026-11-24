@@ -4,6 +4,7 @@ import pytest
 import redis
 from django.db import OperationalError
 from django.test import Client
+from pytest_django import Settings
 
 pytestmark = pytest.mark.django_db
 
@@ -19,7 +20,10 @@ def test_ready_returns_ok_when_dependencies_are_up(client: Client) -> None:
     response = client.get("/health/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "checks": {"database": "ok", "redis": "ok"}}
+    assert response.json() == {
+        "status": "ok",
+        "checks": {"database": "ok", "redis": "ok", "storage": "ok"},
+    }
 
 
 def test_ready_returns_503_when_database_is_down(client: Client) -> None:
@@ -33,7 +37,7 @@ def test_ready_returns_503_when_database_is_down(client: Client) -> None:
     assert response.status_code == 503
     assert response.json() == {
         "status": "unavailable",
-        "checks": {"database": "fail", "redis": "ok"},
+        "checks": {"database": "fail", "redis": "ok", "storage": "ok"},
     }
     assert secret_detail not in response.content.decode()
 
@@ -44,8 +48,18 @@ def test_ready_returns_503_when_redis_is_down(client: Client) -> None:
         response = client.get("/health/ready")
 
     assert response.status_code == 503
-    assert response.json()["checks"] == {"database": "ok", "redis": "fail"}
+    assert response.json()["checks"] == {"database": "ok", "redis": "fail", "storage": "ok"}
     assert secret_detail not in response.content.decode()
+
+
+def test_ready_returns_503_when_storage_is_down(client: Client, settings: Settings) -> None:
+    settings.S3_ENDPOINT_URL = "http://127.0.0.1:1"  # nothing listens here
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"] == {"database": "ok", "redis": "ok", "storage": "fail"}
+    assert "127.0.0.1" not in response.content.decode()
 
 
 def test_health_rejects_non_get(client: Client) -> None:

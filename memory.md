@@ -7,15 +7,16 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Field          | Value                                                                          |
 | -------------- | ------------------------------------------------------------------------------ |
 | Application    | fleetflow-api (backend)                                                        |
-| Current phase  | Phase 3: Drivers & Fleet (plan to be proposed)                                 |
-| Current branch | `docs/phase-2-complete`                                                        |
-| Overall status | Phases 1 and 2 COMPLETED (Phase 2 on 2026-11-24, status enum signed off). Phase 3 NOT STARTED. |
+| Current phase  | Phase 3: Drivers & Fleet (IN PROGRESS, PR 1 of 4 on `feature/api-uploads`)    |
+| Current branch | `feature/api-uploads`                                                          |
+| Overall status | Phases 0–2 COMPLETED. Phase 3 IN PROGRESS: plan approved 2026-11-24, PR 1 (uploads) pushed for review. |
 | Last updated   | 2026-11-24                                                                     |
 
 ## Completed work
 
 | Date       | Branch             | Work                                                                                        | Files                                                                                                                       | Tests run      | Result |
 | ---------- | ------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | -------------- | ------ |
+| 2026-11-24 | feature/api-uploads | Phase 3 PR 1/4. Object storage and the §19 upload flow. Compose and CI run SeaweedFS (`chrislusf/seaweedfs:4.55`, dev keys in `docker/seaweedfs-s3.json`); `core/storage.py` is the only boto3 user (presign PUT with signed size and type, head, ranged read, put, delete, presigned GET as attachment, `bucket_ok` for `/health/ready`). New `uploads` app: `Upload` (server-built object key, ETag fingerprint, DB checks for type, size, confirmed and attached state); `POST /uploads/` (60/h per user) and `POST /uploads/{id}/confirm/` (uploader only: size, magic bytes, lossless JPEG APP1/APP13 and PNG eXIf/tEXt/iTXt/zTXt stripping, rejected files deleted and audited); `attach_upload` and `presign_download` for domain services, both re-checking the ETag; hourly `purge_unattached_uploads`; `ensure_upload_bucket` command. `uploads.create` seeded for owner, admin, ops_manager, fleet_manager. Error codes `upload.*` and `storage.unavailable` (503). Docs: architecture §2, §4, §5, §19, §20, §21; phases.md; CHANGELOG | apps/uploads/\*, apps/core/{storage,errors,views}.py, apps/audit/models.py + 0005, config/settings/base.py, config/urls.py, compose.yaml, docker/seaweedfs-s3.json, .github/workflows/ci.yml, .env.example, conftest.py, tests/test_tenant_sweep.py, pyproject.toml, uv.lock, openapi/schema.yaml, CHANGELOG.md, docs | All inside the API container: ruff, mypy, `makemigrations --check`, pytest (709 tests against the real SeaweedFS; 99.26 % coverage; critical modules 99 %, `uploads/services.py` and `uploads/files.py` 100 %), pip-audit (clean), schema validate and in sync (209 lines added, none removed). Migrations applied, reversed (`uploads zero`, `audit 0004`) and reapplied on the dev DB. Five mutation checks each failed a test (uploader filter, ETag swap check, magic-byte check, stripping, size limit at confirm); the magic-byte one first survived and gained a PDF test. Manual Compose run with curl: presigned host `localhost:8333`, PUT 200, confirm of a JPEG with GPS EXIF 200 and the stored object holds no GPS bytes, an executable renamed `.jpg` 400 `upload.type_mismatch` with an audit entry, 25 MB declaration 400 `upload.too_large`, no token 401, anonymous bucket read 403, `/health/ready` shows `storage: ok` | All pass locally. CI pending (the new SeaweedFS step could only be checked on the PR) |
 | 2026-11-24 | docs/phase-2-complete | Phase 2 checkpoint: acceptance verified, Phase 2 marked COMPLETED, status enum sign-off recorded (phases.md, memory.md, architecture §25) | phases.md, memory.md, architecture.md | On `main` at `693420c`, inside the API container: ruff, mypy, `makemigrations --check`, pytest (597 passed, 99.1 % coverage; critical modules 99 %), schema validate and in sync, pip-audit clean. CI on `main` green for the merges of PRs #7, #8 and #9 (one read of the Actions API). Acceptance mapping: creation table → `apps/shipments/tests/test_create_api.py` (COD deferred, D-API-23; webhook row is Phase 9); transition table → `test_transitions.py` (out-of-order flag deferred to Phase 5, D-API-24); single winner → `test_concurrent_transitions_have_exactly_one_winner`; consistency check → `apps/shipments/tasks.py` with tests | Phase 2 COMPLETED |
 | 2026-11-24 | feature/api-shipment-status (merged, PR #9) | Phase 2 PR 3/3. Status machine: `ALLOWED_TRANSITIONS` (every §11 edge), `transition()` with row lock, `expected_status` (409 `status_conflict`), edge permissions and deny-by-default for unmapped edges; confirm re-validates the draft; `correct_status()` (any live status, non-public `correction` event, audited). APIs: transitions (confirm, cancel, recovery), corrections, timeline, public tracking by token (owner-approved fields, 60/min per IP, credentials ignored). Daily consistency task (log + audit, no auto-fix). `TrackingEvent.reason`. Permissions `shipments.cancel`/`recover`/`correct_status` seeded. hypothesis (dev) added | apps/shipments/\*, apps/core/{errors,pagination}.py, apps/audit/models.py + 0004, config/settings/base.py, apps/accounts/tests/{test_auth,test_models}.py, tests/test_tenant_sweep.py, pyproject.toml, uv.lock, openapi/schema.yaml, CHANGELOG.md, docs | All inside the API container: ruff, mypy, `makemigrations --check`, pytest (597 tests incl. every allowed and disallowed edge, a 2-thread single-winner test and a hypothesis property test; 99 % coverage; critical modules 99 %), pip-audit (clean), schema validate (additive only vs `main`). Migrations applied, reversed and reapplied on the dev DB. Manual Compose run with curl: public page before; cancel without reason 400; cancel 200; repeat with stale status 409; recovery 200; correction to `delivered` 200; timeline shows 4 events with the correction non-public; public page shows `delivered` with public events only; bad token 404 | All pass locally. CI pending |
 | 2026-11-23 | feature/api-shipments (merged, PR #8) | Phase 2 PR 2/3. Shipments: new `shipments` app with `Shipment` (branch, sender customer, service type, `FF-<BRANCH>-<seq>` tracking number from a locked per-branch counter, 128-bit rotatable tracking token, priority, scheduled pickup date, unique external reference, cached total weight), `ShipmentItem` (one per parcel, barcode `<tracking number>-NNN`), immutable `ShipmentAddress` snapshots (copied from the address book or typed in) and append-only `TrackingEvent` (first `created` event). APIs: list with filters and branch scope, create (`Idempotency-Key` required, optional draft), detail, draft PATCH/DELETE, token rotation. `shipments.view`/`create`/`all_branches` seed. Shared code: `PostalAddress` abstract model (customers, no schema change), append-only guard moved to `core`, `idempotency_required`. Onboarding: `create_company` also creates the first branch (`--branch-name`, `--branch-code`) with the owner as a member | apps/shipments/\*, apps/core/{models,errors,idempotency}.py, apps/customers/{models,services}.py, apps/audit/models.py + 0003, apps/tenancy/{services,factories}.py, apps/accounts/services.py, apps/accounts/management/commands/create_company.py, config/settings/base.py, config/urls.py, tests/test_tenant_sweep.py, openapi/schema.yaml, CHANGELOG.md, docs | All inside the API container: ruff, mypy, `makemigrations --check` (no change for `customers` after the refactor), pytest (402 tests, 99.0 % coverage; shipments services 99 %), pip-audit (clean), schema validate (additive only, compared with `main` component by component). Migrations applied, reversed and reapplied on the dev DB; seeded role table checked. Manual Compose run with curl: create company with branch `ber1` → `BER1`; create without key 400; create → `FF-BER1-000001`, barcode `-001`, pickup contact from the customer, delivery `manual`; replay 201 with `Idempotent-Replayed`; duplicate reference 409; draft PATCH, token rotation 200, draft DELETE 204; filtered list | All pass locally. CI pending |
@@ -41,7 +42,11 @@ Factual record only. Update it after every substantial task, dependency or archi
 | Phase 2 PR 2/3: shipments, items, address snapshots, tracking numbers and token, create/list/detail, draft edit/delete, branch-scoping helper and `shipments.*` permissions (D-API-22) | feature/api-shipments | Merged (PR #8) | — | — |
 | Phase 2 PR 3/3: status machine, manual transitions, timeline, consistency check, public tracking | feature/api-shipment-status | Merged (PR #9) | — | — |
 | Phase 2 checkpoint (owner signs off the status enum before clients build on it) | docs/phase-2-complete | Passed 2026-11-24 (enum signed off, Phase 2 COMPLETED) | — | — |
-| Phase 3 plan (drivers & fleet, first uploads) | — | Not started | — | Open decisions: local S3-compatible storage, upload limits, EXIF handling |
+| Phase 3 plan (drivers & fleet, first uploads) | — | Approved 2026-11-24 (phases.md, D-API-25) | — | — |
+| Phase 3 PR 1/4: storage, uploads app, upload flow | feature/api-uploads | Pushed, awaiting owner merge | — | — |
+| Phase 3 PR 2/4: drivers, vehicles, leave, status, availability, branch-scope refactor | feature/api-fleet | Not started | — | Needs PR 1 merged |
+| Phase 3 PR 3/4: driver and vehicle documents, expiry, license and vehicle checks | feature/api-fleet-documents | Not started | — | Needs PRs 1 and 2 merged |
+| Phase 3 PR 4/4: shifts, `/me/driver/`, driver profile rule | feature/api-driver-shifts | Not started | — | Needs PR 2 merged |
 
 ## Decisions
 
@@ -75,6 +80,7 @@ Factual record only. Update it after every substantial task, dependency or archi
 | D-WS-3  | Engineering standards added: principles and definition of done in CLAUDE.md; enforceable detail merged into rules.md §1–5, §8 and new §10 (constants and configuration) | Owner-supplied engineering standards                  | Paste the full text into CLAUDE.md | Avoids duplicating existing rules and keeps CLAUDE.md a short entry point; frontend-only items (TypeScript, ESLint, UI styling) omitted for this backend repo | 2026-11-21 | main   | APPROVED (owner) | All future API work                       |
 | D-API-23 | Phase 2 PR 2 choices (owner 2026-11-23). **Fields:** priority (`normal`/`high`/`urgent`), `scheduled_pickup_date` (not before today in the company timezone) and `external_reference` (unique per company when set); COD deferred to billing because precision needs per-currency minor units. **Addresses:** pickup and delivery are each `{"address_id"}` (any active address-book entry of the company) or an inline address; both are snapshotted; a copied entry without a contact uses the customer's name. **Tracking token:** stored as is and shown to `shipments.view` in detail, rotatable. **Implementation choices:** drafts get a tracking number but no TrackingEvent (draft deletion never touches the append-only history; numbers of deleted drafts leave gaps); `shipments.create` also covers draft edit/delete and token rotation; `shipments.all_branches` only for owner, admin, ops_manager (least privilege; D-API-21 named only dispatchers as own-branch); django-filter not added (a query serializer covers the filters); `create_company` creates the first branch because no branch API exists | PR 2 planning | COD now; inline-only or address-book-only addresses; hashed token shown once; event on draft creation; django-filter | Smallest complete scope that satisfies the §26.4 creation table | 2026-11-23 | feature/api-shipments | APPROVED (owner, Phase 2 checkpoint 2026-11-24) | Admin builds the shipment form and list on this contract; `create_company` gains `--branch-name`/`--branch-code` |
 | D-API-24 | Phase 2 PR 3 choices (owner 2026-11-24). **Public tracking fields:** tracking number, status, carrier (company name), service type name, delivery city and country, scheduled pickup date, public events (status and time); never names, phones, street address, sender or internal events; drafts and suspended companies 404. **Implementation choices (plan approved):** API transitions limited to confirm, cancel and recovery, all with `expected_status`; reason required for cancel, recovery and correction; corrections are non-public events and audited; unmapped edges denied unless the calling service passes `authorized_by_caller=True`; `TrackingEvent.reason` instead of a JSON `payload`; out-of-order flagging deferred to Phase 5 (no device times before then); consistency check compares the latest *recorded* status event, runs daily via beat, logs and audits, never fixes; public tracking lives in `shipments` until `tracking` exists (Phase 7) | PR 3 planning | All edges exposed now; payload JSON; hashed token | Smallest complete scope for the §26.4 transition table; least-privilege public data | 2026-11-24 | feature/api-shipment-status | APPROVED (owner, Phase 2 checkpoint 2026-11-24) | Admin builds status actions and the timeline; the public tracking page uses `/track/{token}/` |
+| D-API-25 | Phase 3 plan (owner 2026-11-24). **Storage:** SeaweedFS 4.55 in Compose and CI; production is any S3 service through `S3_*` env vars; boto3 only, no django-storages (every operation is a client call and files never touch `FileField`), confined to `core/storage.py`. **Uploads:** types and limits as architecture §19 (JPEG and PNG ≤ 10 MB, PDF ≤ 20 MB); EXIF/XMP/IPTC stripped losslessly at confirm with stdlib code and no original kept (PDF metadata untouched, no malware scan); the generic `uploads` app sits between accounts and fleet. **Implementation choices in PR 1:** ETag fingerprint at confirm, re-checked by attach and download, because a presigned PUT URL outlives confirmation; upload creation is not idempotency-keyed (a retry only adds a pending row that the purge removes, and the stored response would hold a signed URL); no `upload.unsupported_type` code (a bad type or purpose is `validation.invalid` from the enum field); extra codes `upload.size_mismatch` and `storage.unavailable`; the storage client lives in `core` so `/health/ready` can use it. **Fleet:** `Driver.user` one-to-one with an active same-company user holding the `driver` role, invited first through the users API; drivers and vehicles have a required home branch with `fleet.all_branches` (owner, admin, ops_manager); a document is valid through its `expires_on` in the company timezone; license categories are the Vienna Convention set with exact membership; volume in m³; downloading document files needs `fleet.manage`. **Shifts:** start and end only (breaks deferred, inspections to Phase 8). **Login rule:** architecture §7 rejects a driver without an active profile at login, but accounts cannot import fleet; driver endpoints answer 403 `driver.profile_inactive` instead and §7 is reworded in PR 4 | Phase 3 planning | django-storages; Pillow re-encoding or keeping originals; MinIO, RustFS or Garage; company-wide fleet; check at login | Smallest complete scope for the §26.4 upload and assignment inputs; no unmaintained image; least privilege for personal data | 2026-11-24 | feature/api-uploads | APPROVED (owner, plan approved 2026-11-24) | Admin builds the fleet screens and the upload flow; driver-app uses `/me/driver/` and the shift endpoints (PR 4) |
 
 ## Dependencies added/changed
 
@@ -99,12 +105,13 @@ Installed 2026-11-22 on `feature/api-setup` (exact pins in `uv.lock`):
 | factory-boy (+ Faker) | 3.3.3 (40.63.0) | dev | Model factories (architecture §26.1); added 2026-11-22 on `feature/api-foundation` |
 | pip-audit | 2.10.1 | dev | Dependency vulnerability audit |
 | hypothesis | 6.170.17 | dev | Property tests of the shipment state machine (architecture §26.1, approved in D-API-21). MPL-2.0, actively released, no runtime use; lockfile adds no other package. Added 2026-11-24 on `feature/api-shipment-status` |
+| boto3 (+ botocore, jmespath, s3transfer) | 1.44.10 (1.44.10, 1.1.0, 0.19.3) | runtime | S3 client for presigned URLs and object operations (D-API-25). Apache-2.0, maintained by AWS, in the lockfile with three small pure-Python transitive packages; `pip-audit` clean. Replaces the django-storages row of architecture §2. Added 2026-11-24 on `feature/api-uploads` |
 
 No Python dependency added in Phase 2 PR 1. The image and CI gained the Debian/Ubuntu `gdal-bin` package (GDAL 3.10.3 and GEOS 3.13.1 in the image) for GeoDjango.
 
-Deferred to the phase that needs them: simplejwt, factory_boy (Phase 1); structlog, sentry-sdk (Phase 1 or later); django-storages, boto3 (Phase 3); channels (Phase 7); gunicorn (Phase 11).
+Deferred to the phase that needs them: structlog, sentry-sdk (Phase 1 or later); channels (Phase 7); gunicorn (Phase 11). django-storages is no longer planned (D-API-25).
 
-Images: `postgis/postgis:18-3.6`, `redis:8.2-alpine`, `python:3.14-slim` (Python 3.13 until 2026-11-22, D-API-10), uv 0.12.1.
+Images: `postgis/postgis:18-3.6`, `redis:8.2-alpine`, `chrislusf/seaweedfs:4.55` (Apache-2.0; local and CI object storage, added 2026-11-24), `python:3.14-slim` (Python 3.13 until 2026-11-22, D-API-10), uv 0.12.1.
 
 ## Incoming client requests
 
@@ -114,7 +121,7 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 | driver-app | `POST /api/v1/devices/` push token register/unregister | 9 (or earlier) | Proposed |
 | driver-app | Minimum app version enforcement (426 on `X-App-Version`) | 1 | Proposed |
 | driver-app | 409 `stop.reassigned`; accept a late POD as evidence (`late_reassigned`) | 5 | Proposed |
-| driver-app | Shift start/end/break and vehicle inspection endpoints | 3 | Proposed |
+| driver-app | Shift start/end/break and vehicle inspection endpoints | 3 | Designed: start and end in Phase 3 PR 4; breaks deferred, inspections go to Phase 8 (D-API-25) |
 | admin | WS ticket endpoint via BFF (already in architecture §17) | 7 | In design |
 
 ## Branch history
@@ -161,7 +168,11 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 
 ### docs/phase-2-complete
 
-- Status: Pushed, PR open for owner review. Work: Phase 2 checkpoint docs.
+- Status: Merged to `main` (PR #10, `4d52d79`). Work: Phase 2 checkpoint docs.
+
+### feature/api-uploads
+
+- Status: Pushed, awaiting owner review and merge. Work: Phase 3 PR 1/4.
 
 
 ## Known issues
@@ -172,6 +183,25 @@ Requests from the client apps, to be designed into the relevant API phase (detai
 | PostGIS image tag for PG18 not yet pinned                                                        | Low      | feature/api-setup | Resolved | Pinned `postgis/postgis:18-3.6` |
 
 ## Security reviews
+
+### Phase 3 PR 1 (2026-11-24, `fleetflow-security-review` checklist, `feature/api-uploads` diff)
+
+| Finding | Severity | Status |
+|---|---|---|
+| A presigned PUT URL stays valid after confirmation until it expires (5 min), so the uploader could replace a verified file with different content | Medium | Fixed in the design: confirm stores the object's ETag, and `attach_upload` and `presign_download` re-check it (409 `upload.not_confirmed`); tested by swapping the object after confirmation |
+| The ETag is taken from the HEAD before the file is read, so a swap between HEAD and read is also caught later instead of being blessed | Info | Intended ordering, covered by the swap test |
+| The local SeaweedFS keys are fixed development values committed in `compose.yaml`, `docker/seaweedfs-s3.json` and CI | Low | Accepted: local and CI only; the settings have no default for the S3 credentials, so production must provide its own |
+| PDFs keep their embedded metadata and are not scanned for malware | Low | Accepted by the owner for now (D-API-25); malware scanning is a Phase 11 decision |
+
+Checked with no finding:
+- Access: every upload view uses `IsAuthenticated` plus `HasRequiredPermission`; only the uploader can confirm (another user in the same company and another company both get 404, and the confirm route is in the tenant sweep); the company comes from the user.
+- Input: type and size are enforced by the signature at the store, again at confirm (size within the limit, equal to the declared size, magic bytes), and by DB check constraints; object keys are built from server values only; the presigned download forces `Content-Disposition: attachment` with a fixed file name.
+- Integrity: rejected files are deleted and audited in a committed transaction before the 400; confirm locks the upload row; a storage outage leaves the upload retryable (503, no half state); the purge deletes the object before the row.
+- Data: audit entries hold IDs, the reason and the content type only; storage errors are logged by class and operation, never to the client; `/health/ready` reports pass or fail only.
+- Throttle: 60/h per user on creation, tested.
+- Dependencies: boto3 only; `pip-audit` clean.
+
+Not applicable yet: public tracking changes, OTP, exports, driver endpoints (PR 4).
 
 ### Phase 2 PR 3 (2026-11-24, `fleetflow-security-review` checklist, `feature/api-shipment-status` diff)
 
@@ -253,6 +283,6 @@ Not applicable yet: driver-scoped endpoints, public tracking, uploads, exports, 
 
 ## Next steps
 
-1. Owner merges `docs/phase-2-complete`.
-2. The owner records the Phase 2 contracts (customers, shipments, status changes, public tracking, signed-off status enum; CHANGELOG Phase 2 entries) in fleetflow-admin and fleetflow-driver-app `memory.md`; owner-handled. The sibling repos still have no git remote.
-3. Propose the Phase 3 plan (drivers & fleet). Open decisions: the local S3-compatible storage server (D-API-9 left it to Phase 3) with django-storages, upload limits and EXIF handling (architecture §19), and the PR breakdown.
+1. Owner reviews and merges `feature/api-uploads` (PR 1/4), then says "proceed" for PR 2 (`feature/api-fleet`).
+2. The owner records the Phase 2 contracts and the Phase 3 PR 1 contract (upload flow, `uploads.create`, new error codes, `/health/ready` storage check; CHANGELOG entries) in fleetflow-admin and fleetflow-driver-app `memory.md`; owner-handled. The sibling repos still have no git remote.
+3. Phase 3 PRs 2–4 as in phases.md. Architecture §7 (driver profile rule), §8 (fleet branch scope) and §10 (fleet model) are updated in the PR that builds them.

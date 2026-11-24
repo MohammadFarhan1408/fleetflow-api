@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 3, NOT STARTED** (plan to be proposed). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24.
+**Current phase: Phase 3, IN PROGRESS** (4-PR plan approved 2026-11-24). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24.
 
 ## Ordering and dependencies
 
@@ -85,13 +85,26 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 3: Drivers & Fleet
 
-- **Status**: NOT STARTED
+- **Status**: IN PROGRESS (plan approved by the owner 2026-11-24; decisions D-API-25)
+- **Approved delivery plan (4 PRs, merged in order):**
+  1. **`feature/api-uploads`**
+     - SeaweedFS in Compose and CI, boto3 (no django-storages), `S3_*` settings, a storage check in `/health/ready`.
+     - `core/storage.py`, the generic `uploads` app (presigned PUT with signed size and type, confirm with magic-byte check and lossless EXIF/XMP/IPTC stripping, attach, ETag swap protection, hourly purge of unattached uploads), `uploads.create`.
+  2. **`feature/api-fleet`**
+     - `Driver` (one-to-one with a user holding the `driver` role) and `Vehicle` (home branch, license category, weight and volume capacity), suspension and out-of-service status with a reason, leave with an overlap constraint, archive.
+     - Availability on a date (`available_on` filter and `availability` in responses). Branch scoping shared with shipments, `fleet.view`, `fleet.manage` and `fleet.all_branches`.
+  3. **`feature/api-fleet-documents`**
+     - Driver and vehicle documents (license with categories, ID, medical, registration, insurance, inspection) attached to uploads, `expires_on` valid through its date in the company timezone, `is_expired` and `expires_before` filters.
+     - License category and registration/insurance checks that Phase 4 assignment will call, 5-minute download URLs for `fleet.manage`.
+  4. **`feature/api-driver-shifts`**
+     - `Shift` start and end with one open shift per driver, `GET /me/driver/`, `/me/shift/start|end/`, `shifts.manage_own`.
+     - `driver.profile_inactive` for driver endpoints without an active profile.
 - **Goal**: an assignable fleet.
 - **Scope**: Driver profile (linked to User), licenses and categories, DriverDocument, Vehicle (capacity weight/volume, category), VehicleDocument, availability (leave, suspension, shifts), document upload via the §19 upload flow (first use of uploads), expiry tracking.
 - **Dependencies**: Phase 1 (Phase 2 not required).
 - **Acceptance**: availability rules are queryable; uploads are hardened (type, size, private); expired documents are detectable.
 - **Required tests**: upload security rows (type mismatch, oversize, unauthorized), availability boundaries, document expiry boundary dates.
-- **Out of scope**: assignment to routes, maintenance, fuel.
+- **Out of scope**: assignment to routes, maintenance, fuel, shift breaks and vehicle inspections (Phase 8), expiry alerts (Phase 8).
 
 ## Phase 4: Dispatch & Route Operations
 

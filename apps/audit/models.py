@@ -31,6 +31,7 @@ class AuditAction(models.TextChoices):
     SHIPMENT_RECOVERED = "shipment.recovered", "Cancelled shipment recovered"
     SHIPMENT_STATUS_CORRECTED = "shipment.status_corrected", "Shipment status corrected"
     SHIPMENT_STATUS_MISMATCH = "shipment.status_mismatch", "Shipment status mismatch found"
+    UPLOAD_REJECTED = "upload.rejected", "Upload rejected"
 
 
 class AuditLog(AppendOnlyModel):

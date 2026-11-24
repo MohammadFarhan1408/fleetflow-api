@@ -20,6 +20,17 @@ REDIS_URL = env.str("REDIS_URL")
 # Separate from SECRET_KEY so JWTs can be rotated (forcing re-login) independently.
 JWT_SIGNING_KEY = env.str("JWT_SIGNING_KEY")
 
+# Private S3-compatible bucket for uploads (architecture §19); any S3 service works.
+S3_ENDPOINT_URL = env.str("S3_ENDPOINT_URL")
+S3_BUCKET = env.str("S3_BUCKET")
+S3_REGION = env.str("S3_REGION", default="us-east-1")
+S3_ACCESS_KEY_ID = env.str("S3_ACCESS_KEY_ID")
+S3_SECRET_ACCESS_KEY = env.str("S3_SECRET_ACCESS_KEY")
+# Presigned URLs are signed for the host the client will call, which differs from the
+# server-side endpoint where the API runs in a container network (e.g. localhost vs storage).
+S3_PUBLIC_ENDPOINT_URL = env.str("S3_PUBLIC_ENDPOINT_URL", default=S3_ENDPOINT_URL)
+UPLOAD_URL_TTL_SECONDS = env.int("UPLOAD_URL_TTL_SECONDS", default=300)
+
 DEBUG = False
 ALLOWED_HOSTS: list[str] = env.list("DJANGO_ALLOWED_HOSTS", default=[])
 
@@ -37,6 +48,7 @@ INSTALLED_APPS = [
     "apps.audit",
     "apps.accounts",
     "apps.customers",
+    "apps.uploads",
     "apps.shipments",
 ]
 
@@ -115,6 +127,7 @@ REST_FRAMEWORK = {
         "password_reset_email": "3/hour",
         "password_reset_ip": "10/hour",
         "public_tracking": "60/min",
+        "uploads": "60/hour",
     },
     # DRF's default (None) trusts the whole X-Forwarded-For header, which clients can
     # spoof. Set this to the number of trusted proxies in front of the app.
@@ -160,6 +173,9 @@ SPECTACULAR_SETTINGS = {
         "ShipmentPriorityEnum": "apps.shipments.models.ShipmentPriority",
         "TrackingEventTypeEnum": "apps.shipments.models.TrackingEventType",
         "TrackingEventSourceEnum": "apps.shipments.models.EventSource",
+        "UploadPurposeEnum": "apps.uploads.models.UploadPurpose",
+        "UploadContentTypeEnum": "apps.uploads.models.UploadContentType",
+        "UploadStatusEnum": "apps.uploads.models.UploadStatus",
     },
 }
 
@@ -186,6 +202,10 @@ CELERY_BEAT_SCHEDULE = {
     "purge-expired-refresh-tokens": {
         "task": "apps.accounts.tasks.purge_expired_refresh_tokens",
         "schedule": timedelta(days=1),
+    },
+    "purge-unattached-uploads": {
+        "task": "apps.uploads.tasks.purge_unattached_uploads",
+        "schedule": timedelta(hours=1),
     },
     "check-shipment-status-consistency": {
         "task": "apps.shipments.tasks.check_status_consistency",

@@ -6,6 +6,7 @@ from django.db import DatabaseError, connection
 from django.http import HttpRequest, JsonResponse
 from django.views.decorators.http import require_GET
 
+from apps.core import storage
 from apps.core.errors import ErrorCode, error_payload
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def health_live(request: HttpRequest) -> JsonResponse:
 
 @require_GET
 def health_ready(request: HttpRequest) -> JsonResponse:
-    checks = {"database": _database_ok(), "redis": _redis_ok()}
+    checks = {"database": _database_ok(), "redis": _redis_ok(), "storage": storage.bucket_ok()}
     healthy = all(checks.values())
     # Only pass/fail per check: never error text, hosts or credentials (rules.md §3).
     return JsonResponse(
