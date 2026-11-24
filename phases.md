@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 2, IN PROGRESS** (plan approved 2026-11-23; PRs 1–2 merged; PR 3/3 `feature/api-shipment-status` implemented, awaiting review, then the Phase 2 checkpoint). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23.
+**Current phase: Phase 3, NOT STARTED** (plan to be proposed). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24.
 
 ## Ordering and dependencies
 
@@ -56,7 +56,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 2: Core Logistics Entities
 
-- **Status**: IN PROGRESS (plan approved by the owner 2026-11-23, decisions D-API-18 to D-API-22 in memory.md). PR 1 merged (PR #7); PR 2 merged (PR #8, choices in D-API-23); PR 3 pushed for review (choices in D-API-24). After it merges: owner checkpoint, including sign-off of the status enum.
+- **Status**: COMPLETED (2026-11-24). PRs #7–#9 merged with CI green on `main`; the owner signed off the shipment status enum (12 statuses, §11 transitions) at the checkpoint; security reviews recorded in memory.md. Decisions D-API-18 to D-API-24.
 - **Approved delivery plan (3 PRs, merged in order):**
   1. **`feature/api-geo-customers`**
      - GeoDjango engine with GDAL in the image and CI; checks run inside the container.
