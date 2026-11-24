@@ -59,13 +59,13 @@ It is the **only** place where business rules and permissions are enforced. flee
 | Jobs           | Celery                                          | 5.7.0                            | PROPOSED       | Celery beat for schedules                                                                             |
 | Realtime       | Django Channels + channels-redis                | 4.3.2 / 4.3.0                    | PROPOSED       | See §17                                                                                               |
 | ASGI server    | uvicorn (behind gunicorn workers or standalone) | 0.54.0 / gunicorn 27.0.1         | PROPOSED       |                                                                                                       |
-| Object storage | S3-compatible via django-storages               | 1.14.6                           | PROPOSED       | Added in Phase 3. Local S3-compatible server chosen then (MinIO images unmaintained, memory D-API-9) |
+| Object storage | S3-compatible through boto3 (no django-storages) | boto3 1.44.10; local server SeaweedFS 4.55 | APPROVED | Owner decision 2026-11-24 (memory D-API-25). Files never pass through Django `FileField`s, so django-storages would add only a presigned-GET helper; the one module touching boto3 is `core/storage.py`. Local and CI server: SeaweedFS (MinIO images are unmaintained, D-API-9); production is any S3 service, configured by `S3_*` env vars |
 | Config         | django-environ                                  | 0.14.0                           | PROPOSED       |                                                                                                       |
 | Logging        | structlog                                       | 26.1.0                           | PROPOSED       | JSON logs                                                                                             |
 | Errors/APM     | sentry-sdk                                      | 2.75.0                           | PROPOSED       | Requires a vendor account. NEEDS APPROVAL for paid tier                                               |
 | Lint/format    | ruff                                            | 0.17.6                           | PROPOSED       |                                                                                                       |
 | Types          | mypy (+ django-stubs 5.2.x)                     | 1.19.1                           | PROPOSED       | Held below 2.x by django-stubs 5.2 `compatible-mypy`                                                  |
-| Containers     | Docker + Compose                                | —                                | PROPOSED       | Development parity: api, worker, beat, postgres-postgis, redis (object storage from Phase 3)          |
+| Containers     | Docker + Compose                                | —                                | PROPOSED       | Development parity: api, worker, beat, postgres-postgis, redis, storage (SeaweedFS, since Phase 3)    |
 | Packaging      | uv                                              | 0.12.1                           | PROPOSED       | `pyproject.toml` + `uv.lock`; also used in Dockerfile and CI (memory D-API-7)                         |
 
 **D-API-1 (APPROVED 2026-11-22): Django 5.2 LTS.** Recommendation: 5.2 LTS (security support until April 2028). simplejwt and django-storages declare support only up to 5.2/5.1. DRF, Channels, pytest-django and django-filter all support 5.2. Alternative: 6.1, after confirming the simplejwt and storages CI matrices. Upgrading from 5.2 to 6.x later is a planned Phase 11 or post-MVP task.
@@ -105,11 +105,12 @@ flowchart LR
 fleetflow-api/
 ├── config/                 # settings/{base,local,test,production}.py, urls, asgi, wsgi, celery
 ├── apps/
-│   ├── core/               # base models (TimeStamped, PublicId), errors, request ID, app version, pagination, idempotency
+│   ├── core/               # base models (TimeStamped, PublicId), errors, request ID, app version, pagination, idempotency, object-store client (storage.py)
 │   ├── accounts/           # users, auth, roles, permissions
 │   ├── tenancy/            # companies, branches, tenant context (TenantScopedModel, TenantQuerySet)
 │   ├── customers/          # customers, business accounts, addresses
 │   ├── shipments/          # shipments, items, status machine, tracking events
+│   ├── uploads/            # presigned uploads: verify, strip metadata, attach (Phase 3)
 │   ├── fleet/              # drivers, vehicles, documents, availability
 │   ├── dispatch/           # routes, stops, assignments, manifests
 │   ├── warehouse/          # warehouses, receiving, sorting, staging, loading scans
@@ -132,7 +133,7 @@ Inside each app: `models.py`, `services.py` (writes and business rules), `select
 - Views stay thin: parse, authorize, call a service or selector, serialize.
 - **Services** own all writes, transactions and state transitions. Other apps call a module's services and selectors, never its models' `.save()` directly.
 - Cross-module side effects use `transaction.on_commit` plus Celery tasks or the outbox (§18), not Django signals for business logic.
-- Dependency direction: `core ← tenancy ← audit ← accounts ← (customers, fleet) ← shipments ← (dispatch, warehouse, delivery, tracking) ← (reporting, notifications, integrations)`. Cycles are a review failure. `audit` references users only through `settings.AUTH_USER_MODEL` and takes `actor` as an object, so it never imports `accounts`. `TenantScopedModel` lives in `tenancy` (not `core`) because it references `Company`.
+- Dependency direction: `core ← tenancy ← audit ← accounts ← uploads ← (customers, fleet) ← shipments ← (dispatch, warehouse, delivery, tracking) ← (reporting, notifications, integrations)`. Cycles are a review failure. `audit` references users only through `settings.AUTH_USER_MODEL` and takes `actor` as an object, so it never imports `accounts`. `TenantScopedModel` lives in `tenancy` (not `core`) because it references `Company`.
 
 ## 6. API conventions
 
@@ -348,10 +349,18 @@ Rules:
 
 ## 19. File storage & uploads
 
-- Private bucket. Objects are keyed `company/{id}/pod/{yyyy}/{mm}/{uuid}.{ext}`. They are never public; reads use short-lived (5 min) presigned GET URLs after a permission check.
-- Upload flow: client requests `POST /uploads/` (purpose, content type, size) → API returns a presigned PUT/POST with content-length and content-type conditions → client uploads → client calls `confirm` → API verifies the object size and type (magic bytes), strips EXIF location from photos (PROPOSED: keep the original in a restricted bucket when evidence is needed, NEEDS APPROVAL), and links it to the POD.
-- Allowed: JPEG, PNG, HEIC→JPEG (converted on device), PDF for documents. Max 10 MB per photo, 20 MB per document. Malware scanning (ClamAV sidecar) is FUTURE, and Phase 11 NEEDS APPROVAL.
-- Orphaned uploads (never confirmed) are purged after 24 h.
+- **Implemented (Phase 3 PR 1; owner decisions in memory D-API-25).** One private bucket on any S3-compatible service, reached only through `core/storage.py` (boto3; no django-storages). Local development and CI run SeaweedFS. Clients never see the bucket: they get short-lived presigned URLs. `S3_ENDPOINT_URL` is the address the API uses; `S3_PUBLIC_ENDPOINT_URL` (default the same) is the host presigned URLs are signed for, because the two differ inside Docker.
+- Objects are keyed `company/{company public_id}/{purpose}/{yyyy}/{mm}/{random uuid}.{ext}`: built by the server from the company's public ID and a fixed extension per type, never from client input. They are never public. Reads are presigned GET URLs valid 5 minutes (`UPLOAD_URL_TTL_SECONDS`), issued as attachments after the domain service has checked permission.
+- **Upload flow** (`apps/uploads`):
+  1. `POST /uploads/` `{purpose, content_type, size}` (`uploads.create`) returns a presigned PUT whose signature covers exactly that `Content-Type` and `Content-Length`, so the store refuses any other size or type. Declaring more than the limit for the type is a 400 `upload.too_large`.
+  2. The client PUTs the file with the returned headers.
+  3. `POST /uploads/{id}/confirm/` (only the uploader). The API checks the stored object: size within the limit and equal to the declared size, magic bytes matching the declared type, and for images it removes metadata (below). A rejected file is deleted from the bucket together with its row, and the rejection is audited (`upload.rejected`, IDs and reason only). A missing object is a retryable 400 `upload.not_found`; a store outage is 503 `storage.unavailable`. Repeating a successful confirm is a no-op.
+  4. A domain service claims the upload with `attach_upload` inside its own transaction. It answers another company's, another user's or a differently-purposed upload as a missing reference (400 `validation.invalid_reference`), and an unconfirmed, changed or already-used one as 409.
+- **Allowed types and limits** (owner-approved as written): JPEG and PNG up to 10 MB, PDF up to 20 MB; HEIC is converted to JPEG on the device. The limits live in `uploads/constants.py` and are repeated as DB check constraints.
+- **Metadata** (owner-approved: strip losslessly, keep no original): JPEG APP1 (EXIF, XMP) and APP13 (IPTC) segments and PNG `eXIf`, `tEXt`, `iTXt` and `zTXt` chunks are removed by copying the picture data byte for byte, never decoding or re-encoding it (`uploads/files.py`). The ICC colour profile stays. A structurally invalid image, or a PNG with data after `IEND`, is rejected as `upload.type_mismatch`. PDFs are stored as uploaded: their embedded metadata is not removed and they are not scanned for malware.
+- **Swap protection.** A presigned PUT URL stays valid until it expires, so the file could be replaced after confirmation. Confirmation stores the object's ETag; `attach_upload` and the download URL check it again and answer 409 `upload.not_confirmed` on a mismatch.
+- **Orphans:** the hourly task `purge_unattached_uploads` deletes uploads that were never attached once they are 24 h old, object first and then row, so a storage failure is retried instead of leaking the file.
+- Malware scanning (ClamAV sidecar) is FUTURE, and Phase 11 NEEDS APPROVAL.
 
 ## 20. Idempotency, concurrency, rate limiting
 
@@ -364,13 +373,13 @@ Rules:
 - `Idempotency-Key` header is **required** on all driver-app mutations and on shipment creation; it is optional elsewhere. Stored `(company, user, key) → request hash, response, status` for 72 h. Same key plus a different payload → 422 `idempotency.key_reuse`.
 - Concurrency: `select_for_update` for state transitions and assignments, plus optimistic `version` integers on routes and stops (409 on stale version). This is what the dispatch board uses for concurrent edits.
 - **Login lockout (implemented Phase 1)**: 10 failures for one email within 15 min, from any IP, lock that email for 15 min (`429 auth.account_locked` with `Retry-After`). Each repeat lock doubles, up to 24 h; the streak resets after 24 h without a lock. State lives in Redis, keyed by a hash of the email. Known trade-off: anyone can temporarily lock a victim's login; the per-IP throttle limits the rate.
-- Rate limits (DRF throttles backed by Redis; login, refresh, password reset and general authenticated limits implemented in Phase 1): login 5/min per IP+email, refresh 30/min per IP, password reset 3/h per email and 10/h per IP, OTP verify 5/shipment total plus 10/min per driver, OTP resend 3/h, pings 6/min per driver, public tracking 60/min per IP, general authenticated 600/min per user.
+- Rate limits (DRF throttles backed by Redis; login, refresh, password reset and general authenticated limits implemented in Phase 1): login 5/min per IP+email, refresh 30/min per IP, password reset 3/h per email and 10/h per IP, OTP verify 5/shipment total plus 10/min per driver, OTP resend 3/h, pings 6/min per driver, public tracking 60/min per IP, upload creation 60/h per user (implemented Phase 3), general authenticated 600/min per user.
 
 ## 21. Errors, logging, observability
 
 - One exception handler maps domain errors (`DomainError(code, detail, status)`) to the error envelope (§6). Unexpected errors → 500 with `request_id` only.
 - Logs are structlog JSON with `request_id`, `company_id`, `user_id` and `route`. **Never** log passwords, tokens, OTPs, full phone numbers, signatures or precise customer addresses at info level (mask them).
-- `/health/live` (process up) and `/health/ready` (DB, Redis, storage reachable). These are used by Docker and the orchestrator.
+- `/health/live` (process up) and `/health/ready` (DB, Redis and the object-store bucket reachable; storage added in Phase 3; pass/fail per check only). These are used by Docker and the orchestrator.
 - Metrics (FUTURE, Phase 11): request latency per endpoint, Celery queue depth, task failures, ping ingest rate. Sentry for errors (NEEDS APPROVAL on the vendor).
 
 ## 22. Performance & caching

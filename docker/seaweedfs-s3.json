@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "fleetflow",
+      "credentials": [
+        { "accessKey": "fleetflow-access", "secretKey": "fleetflow-secret-key-local" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

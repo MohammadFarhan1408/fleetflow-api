@@ -16,7 +16,12 @@ REQUIRED_ENV = {
     "EMAIL_URL": "smtp+tls://mailer:secret@smtp.example.com:587",
     "DEFAULT_FROM_EMAIL": "FleetFlow <no-reply@example.com>",
     "PASSWORD_RESET_URL": "https://admin.example.com/reset-password",
+    "S3_ENDPOINT_URL": "https://s3.example.com",
+    "S3_BUCKET": "fleetflow-test",
+    "S3_ACCESS_KEY_ID": "test-access-key",
+    "S3_SECRET_ACCESS_KEY": "test-secret-key",
 }
+STORAGE_ENV = ["S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]
 
 PRINT_DEBUG = "from django.conf import settings; print(settings.DEBUG)"
 
@@ -50,7 +55,7 @@ def test_settings_module_loads(module: str, expected_debug: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "missing", ["DJANGO_SECRET_KEY", "JWT_SIGNING_KEY", "DATABASE_URL", "REDIS_URL"]
+    "missing", ["DJANGO_SECRET_KEY", "JWT_SIGNING_KEY", "DATABASE_URL", "REDIS_URL", *STORAGE_ENV]
 )
 def test_production_fails_fast_without_required_env(missing: str) -> None:
     env = {k: v for k, v in REQUIRED_ENV.items() if k != missing}
@@ -87,7 +92,7 @@ def test_local_settings_do_not_need_production_only_values() -> None:
     env = {
         k: v
         for k, v in REQUIRED_ENV.items()
-        if k in {"DJANGO_SECRET_KEY", "JWT_SIGNING_KEY", "DATABASE_URL", "REDIS_URL"}
+        if k in {"DJANGO_SECRET_KEY", "JWT_SIGNING_KEY", "DATABASE_URL", "REDIS_URL", *STORAGE_ENV}
     }
 
     result = run_with_settings("config.settings.local", env)

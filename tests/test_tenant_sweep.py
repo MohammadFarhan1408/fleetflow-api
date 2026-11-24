@@ -20,6 +20,7 @@ from apps.customers.factories import AddressFactory, CustomerFactory
 from apps.shipments.factories import ShipmentFactory
 from apps.tenancy.factories import CompanyFactory
 from apps.tenancy.models import Company
+from apps.uploads.factories import UploadFactory
 
 type ObjectFactory = Callable[[Company], tuple[dict[str, Any], list[str]]]
 
@@ -56,6 +57,11 @@ def _shipment_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return {"public_id": shipment.public_id}, secrets
 
 
+def _upload_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    upload = UploadFactory.create(company=company)
+    return {"public_id": upload.public_id}, [str(upload.public_id), upload.object_key]
+
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
@@ -69,6 +75,7 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "shipment-transition": _shipment_in,
     "shipment-correction": _shipment_in,
     "shipment-events": _shipment_in,
+    "upload-confirm": _upload_in,
 }
 
 # Routes that are public by design: the path segment is a bearer credential, not a

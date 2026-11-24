@@ -1287,6 +1287,116 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/uploads/:
+    post:
+      operationId: uploads_create
+      description: |-
+        Start an upload (`uploads.create`): returns a presigned URL for one PUT of exactly the
+        declared size and type. Confirm afterwards. Sizes over the limit for the type get 400
+        `upload.too_large`.
+      tags:
+      - uploads
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTicket'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/uploads/{public_id}/confirm/:
+    post:
+      operationId: uploads_confirm_create
+      description: |-
+        Verify the uploaded file (`uploads.create`; only the uploader's own uploads). The
+        file's size and magic bytes are checked and image metadata (EXIF, XMP, IPTC) is
+        removed. A rejected file is deleted and the upload must be started again. Repeating a
+        successful confirm returns the same result.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - uploads
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Upload'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/users/:
     get:
       operationId: users_list
@@ -2759,6 +2869,105 @@ components:
       description: |-
         * `created` - created
         * `cancelled` - cancelled
+    Upload:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        purpose:
+          allOf:
+          - $ref: '#/components/schemas/UploadPurposeEnum'
+          readOnly: true
+        content_type:
+          allOf:
+          - $ref: '#/components/schemas/UploadContentTypeEnum'
+          readOnly: true
+        size:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/UploadStatusEnum'
+          readOnly: true
+        confirmed_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - confirmed_at
+      - content_type
+      - id
+      - purpose
+      - size
+      - status
+    UploadContentTypeEnum:
+      enum:
+      - image/jpeg
+      - image/png
+      - application/pdf
+      type: string
+      description: |-
+        * `image/jpeg` - JPEG image
+        * `image/png` - PNG image
+        * `application/pdf` - PDF document
+    UploadCreate:
+      type: object
+      properties:
+        purpose:
+          $ref: '#/components/schemas/UploadPurposeEnum'
+        content_type:
+          $ref: '#/components/schemas/UploadContentTypeEnum'
+        size:
+          type: integer
+          minimum: 1
+          description: File size in bytes
+      required:
+      - content_type
+      - purpose
+      - size
+    UploadPurposeEnum:
+      enum:
+      - fleet_document
+      type: string
+      description: '* `fleet_document` - Fleet document'
+    UploadStatusEnum:
+      enum:
+      - pending
+      - confirmed
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `confirmed` - Confirmed
+    UploadTicket:
+      type: object
+      description: |-
+        Response of `POST /uploads/`: send the file with `method` to `upload_url` and exactly
+        these `headers`, before `expires_at`, then confirm.
+      properties:
+        id:
+          type: string
+          format: uuid
+        upload_url:
+          type: string
+          format: uri
+        method:
+          type: string
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - headers
+      - id
+      - method
+      - upload_url
     User:
       type: object
       description: A company member as returned by the users API. Explicit fields

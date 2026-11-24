@@ -86,16 +86,16 @@ def test_all_builtin_roles_are_seeded() -> None:
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
-        # Phase 1 users permissions; customers and shipments permissions per D-API-21.
-        (RoleCode.OWNER, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL}),
-        (RoleCode.ADMIN, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL}),
-        (RoleCode.OPS_MANAGER, {"users.view", *CUSTOMERS, *SHIPMENTS_ALL}),
+        # Phase 1 users permissions; customers and shipments per D-API-21; uploads per D-API-25.
+        (RoleCode.OWNER, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, "uploads.create"}),
+        (RoleCode.ADMIN, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, "uploads.create"}),
+        (RoleCode.OPS_MANAGER, {"users.view", *CUSTOMERS, *SHIPMENTS_ALL, "uploads.create"}),
         (RoleCode.DISPATCHER, {"customers.view", *SHIPMENTS_OWN_BRANCHES}),
         (RoleCode.CUSTOMER_SERVICE, {*CUSTOMERS, *SHIPMENTS_OWN_BRANCHES}),
         (RoleCode.FINANCE, {"customers.view", "shipments.view"}),
         (RoleCode.VIEWER, {"customers.view", "shipments.view"}),
         (RoleCode.WAREHOUSE_STAFF, {"shipments.view"}),
-        (RoleCode.FLEET_MANAGER, {"shipments.view"}),
+        (RoleCode.FLEET_MANAGER, {"shipments.view", "uploads.create"}),
         (RoleCode.DRIVER, set()),
     ],
 )

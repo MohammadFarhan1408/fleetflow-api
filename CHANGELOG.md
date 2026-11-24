@@ -4,6 +4,25 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: uploads (Phase 3 PR 1)
+
+First use of the §19 upload flow. Files go straight to private storage with a presigned URL; the API verifies them at confirm.
+
+- **Start.** `POST /api/v1/uploads/` `{purpose, content_type, size}` (`uploads.create`) → `201` `{id, upload_url, method: "PUT", headers, expires_at}`. Send the file with `method` to `upload_url` with exactly these `headers` (the size is signed too) before `expires_at` (5 minutes). Limited to 60 requests per hour per user.
+  - `purpose`: `fleet_document` (more arrive with their features). `content_type`: `image/jpeg`, `image/png` or `application/pdf`. `size` in bytes: at most 10 MB for images and 20 MB for PDFs, otherwise 400 `upload.too_large`. An unsupported type or purpose is a normal 400 `validation.invalid`.
+- **Confirm.** `POST /api/v1/uploads/{id}/confirm/` (`uploads.create`; only the user who started it, anyone else gets 404) → `200` `{id, purpose, content_type, size, status, confirmed_at}`. The API checks the stored file and removes EXIF, XMP and other metadata from JPEG and PNG (the returned `size` is the cleaned file's). Repeating a successful confirm returns the same result. A rejected file is deleted and the upload must be started again.
+- **Uploads that nothing uses are deleted after 24 hours.**
+- **Enums:** `UploadPurposeEnum`, `UploadContentTypeEnum`, `UploadStatusEnum` (`pending`, `confirmed`).
+- **New error codes:**
+  - `upload.too_large` (400)
+  - `upload.size_mismatch` (400: the stored file is not the declared size)
+  - `upload.type_mismatch` (400: the content is not the declared type, or is malformed)
+  - `upload.not_found` (400: nothing was uploaded yet; upload, then confirm again)
+  - `upload.not_confirmed` and `upload.in_use` (409; returned by the endpoints that attach uploads, from PR 3)
+  - `storage.unavailable` (503: retry later)
+- **New permission in `/me`:** `uploads.create` for owner, admin, ops_manager and fleet_manager.
+- **Readiness:** `GET /health/ready` now includes `checks.storage`.
+
 ### api-additive: shipment status changes, timeline and public tracking (Phase 2 PR 3)
 
 - **Transitions.** `POST /api/v1/shipments/{public_id}/transitions/` `{to, expected_status, reason?}` → `200` with the shipment detail. Optional `Idempotency-Key` (a repeat with the same key replays the result).

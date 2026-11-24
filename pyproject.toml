@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "argon2-cffi",
+    "boto3>=1.44.10",
     "celery[redis]",
     "django>=5.2,<5.3",
     "django-environ",
@@ -59,7 +60,7 @@ exclude = ["/migrations/"]
 
 # These libraries ship no type information and no maintained stubs exist.
 [[tool.mypy.overrides]]
-module = ["celery", "environ"]
+module = ["boto3", "botocore", "botocore.*", "celery", "environ"]
 ignore_missing_imports = true
 
 # factory_boy is only partly typed: its declarations (Sequence, SubFactory, post_generation)

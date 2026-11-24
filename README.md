@@ -10,7 +10,7 @@ Docker with Compose. [uv](https://docs.astral.sh/uv/) on the host is only needed
 
 ```sh
 cp .env.example .env          # then set DJANGO_SECRET_KEY
-docker compose up -d --build  # api, worker, beat, db (PostGIS), redis
+docker compose up -d --build  # api, worker, beat, db (PostGIS), redis, storage (SeaweedFS)
 curl localhost:8000/health/ready
 ```
 

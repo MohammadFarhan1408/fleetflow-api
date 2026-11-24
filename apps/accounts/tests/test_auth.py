@@ -145,6 +145,7 @@ def test_me_lists_permissions_for_owner(api_client: APIClient) -> None:
         "shipments.create",
         "shipments.recover",
         "shipments.view",
+        "uploads.create",
         "users.manage",
         "users.view",
     ]

@@ -22,6 +22,7 @@ class ErrorType(StrEnum):
     RATE_LIMITED = "rate_limited"
     CLIENT = "client_error"
     SERVER = "server_error"
+    UPSTREAM = "upstream_error"
 
 
 class ErrorCode(StrEnum):
@@ -62,6 +63,13 @@ class ErrorCode(StrEnum):
     SHIPMENT_NOT_DRAFT = "shipment.not_draft"
     SHIPMENT_INVALID_TRANSITION = "shipment.invalid_transition"
     SHIPMENT_STATUS_CONFLICT = "shipment.status_conflict"
+    UPLOAD_TOO_LARGE = "upload.too_large"
+    UPLOAD_SIZE_MISMATCH = "upload.size_mismatch"
+    UPLOAD_TYPE_MISMATCH = "upload.type_mismatch"
+    UPLOAD_NOT_FOUND = "upload.not_found"
+    UPLOAD_NOT_CONFIRMED = "upload.not_confirmed"
+    UPLOAD_IN_USE = "upload.in_use"
+    STORAGE_UNAVAILABLE = "storage.unavailable"
     SERVER_ERROR = "server_error"
 
 
@@ -148,6 +156,23 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.SHIPMENT_STATUS_CONFLICT: ErrorSpec(
         409, ErrorType.CONFLICT, "The shipment status has changed; reload and retry"
+    ),
+    ErrorCode.UPLOAD_TOO_LARGE: ErrorSpec(400, ErrorType.VALIDATION, "File is too large"),
+    ErrorCode.UPLOAD_SIZE_MISMATCH: ErrorSpec(
+        400, ErrorType.VALIDATION, "Uploaded file size does not match the request"
+    ),
+    ErrorCode.UPLOAD_TYPE_MISMATCH: ErrorSpec(
+        400, ErrorType.VALIDATION, "File content does not match its declared type"
+    ),
+    ErrorCode.UPLOAD_NOT_FOUND: ErrorSpec(
+        400, ErrorType.VALIDATION, "No uploaded file found; upload it and confirm again"
+    ),
+    ErrorCode.UPLOAD_NOT_CONFIRMED: ErrorSpec(
+        409, ErrorType.CONFLICT, "The upload is not confirmed or was changed after confirmation"
+    ),
+    ErrorCode.UPLOAD_IN_USE: ErrorSpec(409, ErrorType.CONFLICT, "The upload is already in use"),
+    ErrorCode.STORAGE_UNAVAILABLE: ErrorSpec(
+        503, ErrorType.UPSTREAM, "File storage is temporarily unavailable"
     ),
     ErrorCode.SERVER_ERROR: ErrorSpec(500, ErrorType.SERVER, "Internal server error"),
 }
