@@ -405,6 +405,8 @@ fleetflow-api **owns** every contract. Admin and driver-app must not invent fiel
 | Upload flow                                                                                         | §19                                                                                   |
 | Idempotency semantics                                                                               | §20                                                                                   |
 
+**Shipment status enum**: owner-approved as the shared contract at the Phase 2 checkpoint (2026-11-24), with the §11 transitions. Any change needs a CHANGELOG entry and owner approval.
+
 **Changelog**: [CHANGELOG.md](CHANGELOG.md) is the contract changelog. Phase 1 added the auth endpoints, `/me`, the auth error codes and the 426 app-version rule.
 
 **Strategy (PROPOSED, implement in Phase 1 of the clients):** CI on fleetflow-api fails if `schema.yaml` changes without a `CHANGELOG` entry tagged `api-breaking` or `api-additive`. Each client generates typed clients and types from the published schema (e.g. `openapi-typescript` plus a thin fetch wrapper, or `orval` with TanStack Query hooks, NEEDS APPROVAL at admin Phase 0) and pins the schema version it was built against. Every contract change is recorded in this file's changelog section and in the affected app's `memory.md`.
