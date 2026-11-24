@@ -1,6 +1,6 @@
 """Shipment writes (architecture §5, §11). Views pass the acting user; every service
-re-checks tenant and branch scope (rules.md §3). Status changes after creation belong to
-the transition service (PR 3), never to these functions."""
+re-checks tenant and branch scope (rules.md §3). After creation, `status` changes only
+through `transition` and `correct_status`."""
 
 import secrets
 import uuid
@@ -15,6 +15,7 @@ from django.http import HttpRequest
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.permissions import get_user_permissions
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.core.errors import DomainError, ErrorCode
@@ -23,6 +24,7 @@ from apps.customers.services import AddressFields
 from apps.shipments import selectors
 from apps.shipments.constants import MAX_TOTAL_WEIGHT_KG
 from apps.shipments.models import (
+    ALLOWED_TRANSITIONS,
     AddressRole,
     BranchTrackingSequence,
     EventSource,
@@ -33,6 +35,12 @@ from apps.shipments.models import (
     ShipmentStatus,
     TrackingEvent,
     TrackingEventType,
+)
+from apps.shipments.permissions import (
+    SHIPMENTS_CANCEL,
+    SHIPMENTS_CORRECT_STATUS,
+    SHIPMENTS_CREATE,
+    SHIPMENTS_RECOVER,
 )
 from apps.tenancy.models import Branch, Company, ServiceType
 
@@ -117,15 +125,7 @@ def create_shipment(
     _save(shipment)
     _save_contents(shipment, fields)
     if not draft:
-        TrackingEvent.objects.create(
-            company=actor.company,
-            shipment=shipment,
-            type=TrackingEventType.STATUS_CHANGE,
-            status_after=ShipmentStatus.CREATED,
-            occurred_at=timezone.now(),
-            actor=actor,
-            source=EventSource.ADMIN,
-        )
+        _append_status_event(shipment, actor, TrackingEventType.STATUS_CHANGE)
     _audit(AuditAction.SHIPMENT_CREATED, actor, shipment, request, after={"status": status})
     return shipment
 
@@ -164,6 +164,135 @@ def rotate_tracking_token(*, actor: User, shipment: Shipment, request: HttpReque
     shipment.save(update_fields=["tracking_token", "updated_at"])
     _audit(AuditAction.SHIPMENT_TRACKING_TOKEN_ROTATED, actor, shipment, request)
     return shipment
+
+
+# --- Status changes (architecture §11) ---------------------------------------------------
+
+_S = ShipmentStatus
+# Who may take each edge. Edges not listed are denied unless the calling service passes
+# `authorized_by_caller=True`: later phases (warehouse scans, routes, POD) reach them only
+# from services that authorize the action and check its preconditions themselves.
+EDGE_PERMISSIONS: dict[tuple[ShipmentStatus, ShipmentStatus], str] = {
+    (_S.DRAFT, _S.CREATED): SHIPMENTS_CREATE,
+    (_S.CANCELLED, _S.CREATED): SHIPMENTS_RECOVER,
+    **{
+        (origin, _S.CANCELLED): SHIPMENTS_CANCEL
+        for origin, targets in ALLOWED_TRANSITIONS.items()
+        if _S.CANCELLED in targets
+    },
+}
+
+
+@transaction.atomic
+def transition(
+    *,
+    actor: User,
+    shipment: Shipment,
+    to: ShipmentStatus,
+    expected_status: ShipmentStatus,
+    reason: str = "",
+    request: HttpRequest,
+    authorized_by_caller: bool = False,
+) -> Shipment:
+    """Move a shipment along one edge of the lifecycle and append its status event.
+
+    The row is locked and `expected_status` must still hold, so of two concurrent changes
+    exactly one wins and the other gets `shipment.status_conflict`.
+    """
+    shipment = _lock_visible(actor, shipment)
+    current = _check_expected(shipment, expected_status)
+    if to not in ALLOWED_TRANSITIONS[current]:
+        raise DomainError(ErrorCode.SHIPMENT_INVALID_TRANSITION)
+    permission = EDGE_PERMISSIONS.get((current, to))
+    if permission is None:
+        if not authorized_by_caller:  # deny by default
+            raise DomainError(ErrorCode.PERMISSION_DENIED)
+    elif permission not in get_user_permissions(actor):
+        raise DomainError(ErrorCode.PERMISSION_DENIED)
+    if current == _S.DRAFT:
+        # A draft may have gone stale (archived customer, retired service, past date).
+        _resolve(actor, ShipmentFields.of(shipment))
+
+    shipment.status = to
+    shipment.save(update_fields=["status", "updated_at"])
+    _append_status_event(shipment, actor, TrackingEventType.STATUS_CHANGE, reason=reason)
+    if current == _S.CANCELLED:
+        _audit(
+            AuditAction.SHIPMENT_RECOVERED,
+            actor,
+            shipment,
+            request,
+            after={"status": to},
+        )
+    return shipment
+
+
+@transaction.atomic
+def correct_status(
+    *,
+    actor: User,
+    shipment: Shipment,
+    to: ShipmentStatus,
+    expected_status: ShipmentStatus,
+    reason: str,
+    request: HttpRequest,
+) -> Shipment:
+    """Admin override to any live status, including out of `delivered`. Appends a
+    non-public correction event; earlier history is never rewritten."""
+    if SHIPMENTS_CORRECT_STATUS not in get_user_permissions(actor):
+        raise DomainError(ErrorCode.PERMISSION_DENIED)
+    shipment = _lock_visible(actor, shipment)
+    current = _check_expected(shipment, expected_status)
+    # Drafts are not live (confirm them instead), and a shipment never becomes one again.
+    if _S.DRAFT in (current, to) or to == current:
+        raise DomainError(ErrorCode.SHIPMENT_INVALID_TRANSITION)
+
+    shipment.status = to
+    shipment.save(update_fields=["status", "updated_at"])
+    _append_status_event(shipment, actor, TrackingEventType.CORRECTION, reason=reason, public=False)
+    audit.record(
+        AuditAction.SHIPMENT_STATUS_CORRECTED,
+        company=actor.company,
+        actor=actor,
+        object_type="shipment",
+        object_id=str(shipment.public_id),
+        before={"status": current},
+        after={"status": to},
+        request=request,
+    )
+    return shipment
+
+
+def _check_expected(shipment: Shipment, expected_status: ShipmentStatus) -> ShipmentStatus:
+    current = ShipmentStatus(shipment.status)
+    if current != expected_status:
+        raise DomainError(
+            ErrorCode.SHIPMENT_STATUS_CONFLICT,
+            detail=f"The shipment is {current}, not {expected_status}.",
+        )
+    return current
+
+
+def _append_status_event(
+    shipment: Shipment,
+    actor: User,
+    event_type: TrackingEventType,
+    *,
+    reason: str = "",
+    public: bool = True,
+) -> None:
+    # Same transaction as the status write, so the two can never disagree (§12).
+    TrackingEvent.objects.create(
+        company_id=shipment.company_id,
+        shipment=shipment,
+        type=event_type,
+        status_after=shipment.status,
+        occurred_at=timezone.now(),
+        actor=actor,
+        source=EventSource.ADMIN,
+        reason=reason,
+        public=public,
+    )
 
 
 def _lock_visible(actor: User, shipment: Shipment) -> Shipment:

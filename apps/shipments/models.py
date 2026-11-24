@@ -24,6 +24,26 @@ class ShipmentStatus(models.TextChoices):
     CANCELLED = "cancelled", "Cancelled"
 
 
+_S = ShipmentStatus
+
+# Every edge of the lifecycle diagram (architecture §11). No status leads to itself, so a
+# repeated transition without an idempotency key is a conflict, never a duplicate event.
+ALLOWED_TRANSITIONS: dict[ShipmentStatus, frozenset[ShipmentStatus]] = {
+    _S.DRAFT: frozenset({_S.CREATED}),
+    _S.CREATED: frozenset({_S.RECEIVED_AT_WAREHOUSE, _S.ASSIGNED, _S.CANCELLED}),
+    _S.RECEIVED_AT_WAREHOUSE: frozenset({_S.SORTED}),
+    _S.SORTED: frozenset({_S.ASSIGNED, _S.CANCELLED}),
+    _S.ASSIGNED: frozenset({_S.LOADED, _S.OUT_FOR_DELIVERY, _S.CANCELLED}),
+    _S.LOADED: frozenset({_S.OUT_FOR_DELIVERY}),
+    _S.OUT_FOR_DELIVERY: frozenset({_S.DELIVERED, _S.DELIVERY_FAILED}),
+    _S.DELIVERED: frozenset(),
+    _S.DELIVERY_FAILED: frozenset({_S.ASSIGNED, _S.RETURNING, _S.CANCELLED}),
+    _S.RETURNING: frozenset({_S.RECEIVED_AT_WAREHOUSE, _S.RETURNED_TO_SENDER}),
+    _S.RETURNED_TO_SENDER: frozenset(),
+    _S.CANCELLED: frozenset({_S.CREATED}),
+}
+
+
 class ShipmentPriority(models.TextChoices):
     NORMAL = "normal", "Normal"
     HIGH = "high", "High"
@@ -144,6 +164,12 @@ class ShipmentAddress(TenantScopedModel, PostalAddress):
 
 class TrackingEventType(models.TextChoices):
     STATUS_CHANGE = "status_change", "Status change"
+    # An admin override of the status (architecture §11); never shown on public tracking.
+    CORRECTION = "correction", "Correction"
+
+
+# Event types that set `Shipment.status`; the latest recorded one must match it.
+STATUS_EVENT_TYPES = (TrackingEventType.STATUS_CHANGE, TrackingEventType.CORRECTION)
 
 
 class EventSource(models.TextChoices):
@@ -174,6 +200,8 @@ class TrackingEvent(TenantScopedModel, AppendOnlyModel):
     source = models.CharField(max_length=20, choices=EventSource.choices)
     # Visible on customer-facing tracking.
     public = models.BooleanField(default=True)
+    # Why the change was made (required for cancel, recovery and correction).
+    reason = models.CharField(max_length=500, blank=True)
 
     objects = TrackingEventQuerySet.as_manager()  # type: ignore[misc]  # see TrackingEventQuerySet
 

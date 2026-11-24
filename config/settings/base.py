@@ -114,6 +114,7 @@ REST_FRAMEWORK = {
         "refresh": "30/min",
         "password_reset_email": "3/hour",
         "password_reset_ip": "10/hour",
+        "public_tracking": "60/min",
     },
     # DRF's default (None) trusts the whole X-Forwarded-For header, which clients can
     # spoof. Set this to the number of trusted proxies in front of the app.
@@ -157,6 +158,8 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ShipmentStatusEnum": "apps.shipments.models.ShipmentStatus",
         "ShipmentPriorityEnum": "apps.shipments.models.ShipmentPriority",
+        "TrackingEventTypeEnum": "apps.shipments.models.TrackingEventType",
+        "TrackingEventSourceEnum": "apps.shipments.models.EventSource",
     },
 }
 
@@ -182,6 +185,10 @@ CELERY_BEAT_SCHEDULE = {
     },
     "purge-expired-refresh-tokens": {
         "task": "apps.accounts.tasks.purge_expired_refresh_tokens",
+        "schedule": timedelta(days=1),
+    },
+    "check-shipment-status-consistency": {
+        "task": "apps.shipments.tasks.check_status_consistency",
         "schedule": timedelta(days=1),
     },
 }

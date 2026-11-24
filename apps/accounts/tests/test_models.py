@@ -70,8 +70,13 @@ def test_user_for_company_is_tenant_scoped() -> None:
 
 USERS = {"users.view", "users.manage"}
 CUSTOMERS = {"customers.view", "customers.manage"}
-SHIPMENTS_OWN_BRANCHES = {"shipments.view", "shipments.create"}
-SHIPMENTS_ALL = {*SHIPMENTS_OWN_BRANCHES, "shipments.all_branches"}
+SHIPMENTS_OWN_BRANCHES = {"shipments.view", "shipments.create", "shipments.cancel"}
+SHIPMENTS_ALL = {
+    *SHIPMENTS_OWN_BRANCHES,
+    "shipments.all_branches",
+    "shipments.recover",
+    "shipments.correct_status",
+}
 
 
 def test_all_builtin_roles_are_seeded() -> None:

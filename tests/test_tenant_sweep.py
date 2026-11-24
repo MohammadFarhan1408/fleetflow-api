@@ -66,7 +66,15 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "customer-address-archive": _address_in,
     "shipment-detail": _shipment_in,
     "shipment-tracking-token": _shipment_in,
+    "shipment-transition": _shipment_in,
+    "shipment-correction": _shipment_in,
+    "shipment-events": _shipment_in,
 }
+
+# Routes that are public by design: the path segment is a bearer credential, not a
+# tenant object ID, so "another company's user gets 404" does not apply. Each has its own
+# tests proving a token opens exactly one shipment.
+PUBLIC_ROUTES = {"public-tracking"}
 
 # URL name → strings in company A that must never appear in company B's list response.
 LIST_ROUTES: dict[str, ObjectFactory] = {
@@ -108,7 +116,9 @@ def _served_methods(pattern: URLPattern) -> list[str]:
     return [m.upper() for m in ("get", "put", "patch", "delete", "post") if hasattr(view_class, m)]
 
 
-PARAMETRIZED = [(route, p) for route, p in _api_routes() if "<" in route]
+PARAMETRIZED = [
+    (route, p) for route, p in _api_routes() if "<" in route and p.name not in PUBLIC_ROUTES
+]
 
 
 def _client_for_other_company() -> APIClient:

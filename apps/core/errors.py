@@ -60,6 +60,8 @@ class ErrorCode(StrEnum):
     SHIPMENT_PAST_SCHEDULE = "shipment.past_schedule"
     SHIPMENT_DUPLICATE_REFERENCE = "shipment.duplicate_reference"
     SHIPMENT_NOT_DRAFT = "shipment.not_draft"
+    SHIPMENT_INVALID_TRANSITION = "shipment.invalid_transition"
+    SHIPMENT_STATUS_CONFLICT = "shipment.status_conflict"
     SERVER_ERROR = "server_error"
 
 
@@ -140,6 +142,12 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.SHIPMENT_NOT_DRAFT: ErrorSpec(
         409, ErrorType.CONFLICT, "Only draft shipments can be changed"
+    ),
+    ErrorCode.SHIPMENT_INVALID_TRANSITION: ErrorSpec(
+        409, ErrorType.CONFLICT, "This status change is not allowed"
+    ),
+    ErrorCode.SHIPMENT_STATUS_CONFLICT: ErrorSpec(
+        409, ErrorType.CONFLICT, "The shipment status has changed; reload and retry"
     ),
     ErrorCode.SERVER_ERROR: ErrorSpec(500, ErrorType.SERVER, "Internal server error"),
 }

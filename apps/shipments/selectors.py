@@ -1,14 +1,22 @@
 import uuid
 from datetime import datetime
 
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import F, OuterRef, Prefetch, Q, QuerySet, Subquery
 from django.shortcuts import get_object_or_404
 
 from apps.accounts.models import User
 from apps.accounts.permissions import get_user_permissions
-from apps.shipments.models import Shipment, ShipmentAddress, ShipmentPriority, ShipmentStatus
+from apps.shipments.models import (
+    STATUS_EVENT_TYPES,
+    AddressRole,
+    Shipment,
+    ShipmentAddress,
+    ShipmentPriority,
+    ShipmentStatus,
+    TrackingEvent,
+)
 from apps.shipments.permissions import SHIPMENTS_ALL_BRANCHES
-from apps.tenancy.models import Branch
+from apps.tenancy.models import Branch, CompanyStatus
 
 
 def branches_for_user(user: User) -> QuerySet[Branch]:
@@ -74,3 +82,63 @@ def get_shipment(user: User, public_id: uuid.UUID) -> Shipment:
         )
     )
     return get_object_or_404(shipments, public_id=public_id)
+
+
+def timeline(user: User, shipment_id: uuid.UUID) -> QuerySet[TrackingEvent]:
+    """A visible shipment's events, internal ones included. 404 if not visible. Ordered
+    by the pagination class (occurred_at, then recorded_at)."""
+    shipment = get_object_or_404(shipments_for_user(user).only("pk"), public_id=shipment_id)
+    return (
+        TrackingEvent.objects.for_company(user.company)
+        .filter(shipment=shipment)
+        .select_related("actor")
+    )
+
+
+def get_public_shipment(token: str) -> Shipment:
+    """The shipment a public tracking token opens, with only what the public page shows.
+
+    The token is the credential, so this is deliberately not tenant-scoped. Drafts and
+    suspended companies' shipments answer 404, like unknown or rotated tokens.
+    """
+    shipments = (
+        Shipment.objects.exclude(status=ShipmentStatus.DRAFT)
+        .filter(company__status=CompanyStatus.ACTIVE)
+        .select_related("company", "service_type")
+        .prefetch_related(
+            Prefetch(
+                "addresses",
+                ShipmentAddress.objects.filter(role=AddressRole.DELIVERY).only(
+                    "shipment_id", "city", "country"
+                ),
+                to_attr="delivery_addresses",
+            ),
+            Prefetch(
+                "events",
+                TrackingEvent.objects.filter(public=True).order_by("occurred_at", "recorded_at"),
+                to_attr="public_events",
+            ),
+        )
+    )
+    return get_object_or_404(shipments, tracking_token=token)
+
+
+def status_mismatches() -> QuerySet[Shipment]:
+    """Live shipments whose status differs from their latest recorded status event
+    (architecture §12), annotated with `last_event_status` (None if they have none).
+
+    Operator job across every company, so it is not tenant-scoped. "Latest" is the last
+    one recorded, the order in which statuses were applied; late offline events may carry
+    an earlier `occurred_at`.
+    """
+    last_status = (
+        TrackingEvent.objects.filter(shipment=OuterRef("pk"), type__in=STATUS_EVENT_TYPES)
+        .order_by("-recorded_at", "-pk")
+        .values("status_after")[:1]
+    )
+    return (
+        Shipment.objects.exclude(status=ShipmentStatus.DRAFT)
+        .annotate(last_event_status=Subquery(last_status))
+        .filter(Q(last_event_status__isnull=True) | ~Q(status=F("last_event_status")))
+        .select_related("company")
+    )
