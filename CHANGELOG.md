@@ -4,6 +4,22 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: shipment status changes, timeline and public tracking (Phase 2 PR 3)
+
+- **Transitions.** `POST /api/v1/shipments/{public_id}/transitions/` `{to, expected_status, reason?}` → `200` with the shipment detail. Optional `Idempotency-Key` (a repeat with the same key replays the result).
+  - `to: "created"` from `draft` confirms a draft (needs `shipments.create`; the draft is re-validated, so a stale one answers the same 400 codes as create).
+  - `to: "cancelled"` from `created`, `sorted`, `assigned` or `delivery_failed` cancels (needs `shipments.cancel`, `reason` required).
+  - `to: "created"` from `cancelled` recovers (needs `shipments.recover`, `reason` required, audited).
+  - `expected_status` is the status the client last saw; if it changed meanwhile the answer is 409 `shipment.status_conflict`. Other `to` values answer 400; the remaining lifecycle edges arrive with their phases (routes, warehouse, delivery).
+- **Corrections.** `POST /api/v1/shipments/{public_id}/corrections/` `{to, expected_status, reason}` (`shipments.correct_status`) → `200`. Any status except `draft` and the current one, including out of `delivered`. Appends a non-public `correction` event and an audit entry; history is never rewritten.
+- **Timeline.** `GET /api/v1/shipments/{public_id}/events/` (`shipments.view`): cursor-paginated, oldest first (`occurred_at`, then `recorded_at`). Each event: `type` (`status_change` or `correction`), `status_after`, `occurred_at`, `recorded_at`, `source` (`admin`), `public`, `reason`, `actor{public_id,full_name}` or null.
+- **Public tracking.** `GET /api/v1/track/{tracking_token}/`, no authentication (any `Authorization` header is ignored), 60 requests/min per IP. Returns only `tracking_number`, `status`, `carrier` (company name), `service` (service type name), `delivery{city,country}`, `scheduled_pickup_date` and `events[{status,occurred_at}]` (public events only). Unknown or rotated tokens, drafts and suspended companies answer 404.
+- **Enums:** `TrackingEventTypeEnum` (`status_change`, `correction`) and `TrackingEventSourceEnum` (`admin`). Later phases add values (additive).
+- **New error codes:** `shipment.invalid_transition` (409: the edge is not in the lifecycle, e.g. from `delivered`) and `shipment.status_conflict` (409: `expected_status` no longer holds).
+- **New permissions in `/me`:**
+  - `shipments.cancel`: owner, admin, ops_manager, dispatcher, customer_service
+  - `shipments.recover` and `shipments.correct_status`: owner, admin, ops_manager
+
 ### api-additive: shipments (Phase 2 PR 2)
 
 - **Shipment list.** `GET /api/v1/shipments/` (`shipments.view`): cursor-paginated, newest first. Users see only their own branches unless they hold `shipments.all_branches`.

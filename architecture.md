@@ -276,6 +276,7 @@ stateDiagram-v2
 
 Rules:
 
+- **Implemented (Phase 2 PR 3)**: the table is `shipments.models.ALLOWED_TRANSITIONS`; `EDGE_PERMISSIONS` maps confirm (`shipments.create`), cancel (`shipments.cancel`) and recovery (`shipments.recover`). Any other edge is denied unless the calling service passes `authorized_by_caller=True` after its own checks (deny by default). The API exposes confirm, cancel and recovery at `POST /shipments/{id}/transitions/` (`expected_status` required) and corrections at `POST /shipments/{id}/corrections/`; idempotency comes from the optional `Idempotency-Key`.
 - Transitions happen **only** through `shipments.services.transition(shipment, to, actor, reason, idempotency_key)`. That function checks the transition table, the actor's permission and the preconditions (e.g. `loaded` requires a loading scan, `delivered` requires an accepted POD).
 - `delivered` is terminal. Corrections use `admin_correction` (permission `shipments.correct_status`, mandatory reason, audited), which appends a correction event and never rewrites history.
 - `cancelled → created` recovery is permitted only through the recovery workflow, never directly to `delivered`.
@@ -284,6 +285,7 @@ Rules:
 
 ## 12. Tracking events
 
+- **Implemented (Phase 2 PR 3)**: a `correction` type (non-public) and a `reason` field (instead of a JSON `payload`, which no event needs yet, memory D-API-24); the timeline endpoint; the daily consistency task (`shipments.tasks.check_status_consistency`), which compares `status` with the latest *recorded* `status_change`/`correction` event and logs plus audits (`shipment.status_mismatch`) each mismatch. Flagging out-of-order device times waits for Phase 5, the first source of device time. Public tracking (§7) lives in `shipments` until `tracking` exists (Phase 7).
 - **Implemented (Phase 2 PR 2)**: the model with types `status_change` and source `admin` only, guarded like `AuditLog` (`core.AppendOnlyModel`); other types, sources, `location` and `payload` arrive with the phases that emit them.
 - `TrackingEvent` is append-only: `shipment`, `type` (status_change, scan, exception, note, correction, location_milestone), `status_after`, `occurred_at` (device time), `recorded_at` (server time), `actor`, `source` (admin, driver_app, warehouse, system, integration), `location` (optional point), `payload` (JSONB, schema per type), and `public` (bool: visible on customer tracking).
 - `shipment.status` is a denormalized copy of the latest status_change event. It is written in the same transaction. A nightly Celery check flags mismatches (`status != last status_change.status_after`) to ops and the logs.

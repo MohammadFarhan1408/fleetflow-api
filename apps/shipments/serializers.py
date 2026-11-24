@@ -15,6 +15,7 @@ from apps.shipments.models import (
     ShipmentItem,
     ShipmentPriority,
     ShipmentStatus,
+    TrackingEvent,
 )
 from apps.shipments.services import ItemFields
 
@@ -121,6 +122,45 @@ class ShipmentCreateSerializer(ShipmentWriteSerializer):
     draft = serializers.BooleanField(
         required=False, default=False, help_text="Create as an editable draft."
     )
+
+
+class TransitionSerializer(serializers.Serializer[dict[str, Any]]):
+    """A status change requested through the API. Phase 2 exposes confirm
+    (`draft → created`), cancel (`→ cancelled`) and recovery (`cancelled → created`);
+    other edges belong to later phases (memory D-API-21)."""
+
+    to = serializers.ChoiceField(
+        choices=[ShipmentStatus.CREATED, ShipmentStatus.CANCELLED],
+        help_text="created: confirm a draft or recover a cancelled shipment; cancelled: cancel.",
+    )
+    expected_status = serializers.ChoiceField(
+        choices=ShipmentStatus.choices,
+        help_text="The status the client last saw; 409 shipment.status_conflict if it changed.",
+    )
+    reason = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        default="",
+        max_length=500,
+        help_text="Required to cancel or recover.",
+    )
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        needs_reason = (
+            attrs["to"] == ShipmentStatus.CANCELLED
+            or attrs["expected_status"] == ShipmentStatus.CANCELLED
+        )
+        if needs_reason and not attrs["reason"].strip():
+            raise serializers.ValidationError({"reason": ["A reason is required."]})
+        return attrs
+
+
+class CorrectionSerializer(serializers.Serializer[dict[str, Any]]):
+    to = serializers.ChoiceField(
+        choices=[c for c in ShipmentStatus.choices if c[0] != ShipmentStatus.DRAFT]
+    )
+    expected_status = serializers.ChoiceField(choices=ShipmentStatus.choices)
+    reason = serializers.CharField(max_length=500)
 
 
 # --- Output ---------------------------------------------------------------------------
@@ -233,3 +273,68 @@ class TrackingTokenSerializer(serializers.ModelSerializer[Shipment]):
         model = Shipment
         fields = ["tracking_token"]
         read_only_fields = fields
+
+
+class ActorRefSerializer(serializers.Serializer[Any]):
+    public_id = serializers.UUIDField()
+    full_name = serializers.CharField()
+
+
+class TrackingEventSerializer(serializers.ModelSerializer[TrackingEvent]):
+    actor = ActorRefSerializer(allow_null=True)
+
+    class Meta:
+        model = TrackingEvent
+        fields = [
+            "type",
+            "status_after",
+            "occurred_at",
+            "recorded_at",
+            "source",
+            "public",
+            "reason",
+            "actor",
+        ]
+        read_only_fields = fields
+
+
+class PublicEventSerializer(serializers.ModelSerializer[TrackingEvent]):
+    status = serializers.CharField(source="status_after")
+
+    class Meta:
+        model = TrackingEvent
+        fields = ["status", "occurred_at"]
+        read_only_fields = fields
+
+
+class PublicDeliverySerializer(serializers.Serializer[Any]):
+    city = serializers.CharField()
+    country = serializers.CharField()
+
+
+class PublicTrackingSerializer(serializers.ModelSerializer[Shipment]):
+    """The only fields public tracking may show (owner-approved, memory D-API-24): no
+    names, phones, street addresses, sender or internal events."""
+
+    carrier = serializers.CharField(source="company.name")
+    service = serializers.CharField(source="service_type.name")
+    delivery = serializers.SerializerMethodField()
+    events = PublicEventSerializer(source="public_events", many=True)
+
+    class Meta:
+        model = Shipment
+        fields = [
+            "tracking_number",
+            "status",
+            "carrier",
+            "service",
+            "delivery",
+            "scheduled_pickup_date",
+            "events",
+        ]
+        read_only_fields = fields
+
+    @extend_schema_field(PublicDeliverySerializer)
+    def get_delivery(self, shipment: Shipment) -> dict[str, Any]:
+        (address,) = shipment.delivery_addresses  # type: ignore[attr-defined]  # prefetch to_attr
+        return PublicDeliverySerializer(address).data

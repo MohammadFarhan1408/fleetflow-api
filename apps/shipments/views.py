@@ -10,7 +10,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,18 +18,24 @@ from rest_framework.views import APIView
 from apps.accounts.authentication import current_user
 from apps.accounts.permissions import HasRequiredPermission
 from apps.core.idempotency import IDEMPOTENCY_KEY_HEADER, idempotency_required, idempotent
+from apps.core.pagination import PublicIdCursorPagination
 from apps.core.serializers import ErrorSerializer
 from apps.shipments import selectors, services
-from apps.shipments.models import Shipment
-from apps.shipments.permissions import SHIPMENTS_CREATE, SHIPMENTS_VIEW
+from apps.shipments.models import Shipment, ShipmentStatus, TrackingEvent
+from apps.shipments.permissions import SHIPMENTS_CORRECT_STATUS, SHIPMENTS_CREATE, SHIPMENTS_VIEW
 from apps.shipments.serializers import (
+    CorrectionSerializer,
+    PublicTrackingSerializer,
     ShipmentCreateSerializer,
     ShipmentDetailSerializer,
     ShipmentListQuerySerializer,
     ShipmentListSerializer,
     ShipmentWriteSerializer,
+    TrackingEventSerializer,
     TrackingTokenSerializer,
+    TransitionSerializer,
 )
+from apps.shipments.throttles import PublicTrackingThrottle
 
 ERROR = OpenApiResponse(ErrorSerializer)
 READ_ERRORS = {401: ERROR, 403: ERROR, 404: ERROR}
@@ -133,3 +139,89 @@ class ShipmentTrackingTokenView(ShipmentAccess):
         shipment = selectors.get_shipment(actor, public_id)
         shipment = services.rotate_tracking_token(actor=actor, shipment=shipment, request=request)
         return Response(TrackingTokenSerializer(shipment).data)
+
+
+class ShipmentTransitionView(APIView):
+    """Confirm a draft, cancel, or recover a cancelled shipment. Any user who can see the
+    shipment may ask; the service checks the edge's permission (`shipments.create`,
+    `shipments.cancel` or `shipments.recover`) and answers 403 otherwise."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"POST": SHIPMENTS_VIEW}
+
+    @extend_schema(
+        request=TransitionSerializer, responses={200: ShipmentDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        shipment = selectors.get_shipment(actor, public_id)
+        serializer = TransitionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        shipment = services.transition(
+            actor=actor,
+            shipment=shipment,
+            to=ShipmentStatus(serializer.validated_data["to"]),
+            expected_status=ShipmentStatus(serializer.validated_data["expected_status"]),
+            reason=serializer.validated_data["reason"],
+            request=request,
+        )
+        return _detail(request, shipment)
+
+
+class ShipmentCorrectionView(APIView):
+    """Admin status correction (`shipments.correct_status`): any live status, reason
+    required, audited. Appends a non-public correction event."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"POST": SHIPMENTS_CORRECT_STATUS}
+
+    @extend_schema(
+        request=CorrectionSerializer, responses={200: ShipmentDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        shipment = selectors.get_shipment(actor, public_id)
+        serializer = CorrectionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        shipment = services.correct_status(
+            actor=actor,
+            shipment=shipment,
+            to=ShipmentStatus(serializer.validated_data["to"]),
+            expected_status=ShipmentStatus(serializer.validated_data["expected_status"]),
+            reason=serializer.validated_data["reason"],
+            request=request,
+        )
+        return _detail(request, shipment)
+
+
+class TimelinePagination(PublicIdCursorPagination):
+    # Chronological by device time, then server time (architecture §12).
+    ordering = ("occurred_at", "recorded_at", "pk")
+
+
+class ShipmentTimelineView(ListAPIView[TrackingEvent]):
+    """A shipment's full history, internal events included (`shipments.view`)."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"GET": SHIPMENTS_VIEW}
+    serializer_class = TrackingEventSerializer
+    pagination_class = TimelinePagination
+
+    def get_queryset(self) -> QuerySet[TrackingEvent]:
+        return selectors.timeline(current_user(self.request), self.kwargs["public_id"])
+
+
+class PublicTrackingView(APIView):
+    """Public tracking by token, no login (architecture §7). Only whitelisted fields and
+    public events; unknown, rotated and draft tokens answer 404."""
+
+    # Credentials are ignored, so a stale Authorization header cannot turn this into a 401.
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [PublicTrackingThrottle]
+
+    @extend_schema(auth=[], responses={200: PublicTrackingSerializer, 404: ERROR, 429: ERROR})
+    def get(self, request: Request, token: str) -> Response:
+        return Response(PublicTrackingSerializer(selectors.get_public_shipment(token)).data)

@@ -1046,6 +1046,106 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/shipments/{public_id}/corrections/:
+    post:
+      operationId: shipments_corrections_create
+      description: |-
+        Admin status correction (`shipments.correct_status`): any live status, reason
+        required, audited. Appends a non-public correction event.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Correction'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/shipments/{public_id}/events/:
+    get:
+      operationId: shipments_events_list
+      description: A shipment's full history, internal events included (`shipments.view`).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTrackingEventList'
+          description: ''
   /api/v1/shipments/{public_id}/tracking-token/:
     post:
       operationId: shipments_tracking_token_create
@@ -1082,6 +1182,106 @@ paths:
                 $ref: '#/components/schemas/Error'
           description: ''
         '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/shipments/{public_id}/transitions/:
+    post:
+      operationId: shipments_transitions_create
+      description: |-
+        Confirm a draft, cancel, or recover a cancelled shipment. Any user who can see the
+        shipment may ask; the service checks the edge's permission (`shipments.create`,
+        `shipments.cancel` or `shipments.recover`) and answers 403 otherwise.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - shipments
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Transition'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/track/{token}/:
+    get:
+      operationId: track_retrieve
+      description: |-
+        Public tracking by token, no login (architecture §7). Only whitelisted fields and
+        public events; unknown, rotated and draft tokens answer 404.
+      parameters:
+      - in: path
+        name: token
+        schema:
+          type: string
+        required: true
+      tags:
+      - track
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicTracking'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '429':
           content:
             application/json:
               schema:
@@ -1271,6 +1471,17 @@ paths:
           description: ''
 components:
   schemas:
+    ActorRef:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+      required:
+      - full_name
+      - public_id
     Address:
       type: object
       properties:
@@ -1432,6 +1643,46 @@ components:
       required:
       - code
       - public_id
+    Correction:
+      type: object
+      properties:
+        to:
+          $ref: '#/components/schemas/CorrectionToEnum'
+        expected_status:
+          $ref: '#/components/schemas/ShipmentStatusEnum'
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - expected_status
+      - reason
+      - to
+    CorrectionToEnum:
+      enum:
+      - created
+      - received_at_warehouse
+      - sorted
+      - assigned
+      - loaded
+      - out_for_delivery
+      - delivered
+      - delivery_failed
+      - returning
+      - returned_to_sender
+      - cancelled
+      type: string
+      description: |-
+        * `created` - Created
+        * `received_at_warehouse` - Received at warehouse
+        * `sorted` - Sorted
+        * `assigned` - Assigned
+        * `loaded` - Loaded
+        * `out_for_delivery` - Out for delivery
+        * `delivered` - Delivered
+        * `delivery_failed` - Delivery failed
+        * `returning` - Returning
+        * `returned_to_sender` - Returned to sender
+        * `cancelled` - Cancelled
     Customer:
       type: object
       properties:
@@ -1772,6 +2023,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ShipmentList'
+    PaginatedTrackingEventList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackingEvent'
     PaginatedUserList:
       type: object
       required:
@@ -1956,6 +2226,66 @@ components:
           maxItems: 100
         is_active:
           type: boolean
+    PublicDelivery:
+      type: object
+      properties:
+        city:
+          type: string
+        country:
+          type: string
+      required:
+      - city
+      - country
+    PublicEvent:
+      type: object
+      properties:
+        status:
+          type: string
+        occurred_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - occurred_at
+      - status
+    PublicTracking:
+      type: object
+      description: |-
+        The only fields public tracking may show (owner-approved, memory D-API-24): no
+        names, phones, street addresses, sender or internal events.
+      properties:
+        tracking_number:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentStatusEnum'
+          readOnly: true
+        carrier:
+          type: string
+        service:
+          type: string
+        delivery:
+          allOf:
+          - $ref: '#/components/schemas/PublicDelivery'
+          readOnly: true
+        scheduled_pickup_date:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicEvent'
+      required:
+      - carrier
+      - delivery
+      - events
+      - scheduled_pickup_date
+      - service
+      - status
+      - tracking_number
     RefreshToken:
       type: object
       properties:
@@ -2317,6 +2647,61 @@ components:
       required:
       - access
       - refresh
+    TrackingEvent:
+      type: object
+      properties:
+        type:
+          allOf:
+          - $ref: '#/components/schemas/TrackingEventTypeEnum'
+          readOnly: true
+        status_after:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentStatusEnum'
+          readOnly: true
+        occurred_at:
+          type: string
+          format: date-time
+          readOnly: true
+        recorded_at:
+          type: string
+          format: date-time
+          readOnly: true
+        source:
+          allOf:
+          - $ref: '#/components/schemas/TrackingEventSourceEnum'
+          readOnly: true
+        public:
+          type: boolean
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        actor:
+          allOf:
+          - $ref: '#/components/schemas/ActorRef'
+          nullable: true
+      required:
+      - actor
+      - occurred_at
+      - public
+      - reason
+      - recorded_at
+      - source
+      - status_after
+      - type
+    TrackingEventSourceEnum:
+      enum:
+      - admin
+      type: string
+      description: '* `admin` - Admin console'
+    TrackingEventTypeEnum:
+      enum:
+      - status_change
+      - correction
+      type: string
+      description: |-
+        * `status_change` - Status change
+        * `correction` - Correction
     TrackingToken:
       type: object
       properties:
@@ -2325,6 +2710,55 @@ components:
           readOnly: true
       required:
       - tracking_token
+    Transition:
+      type: object
+      description: |-
+        A status change requested through the API. Phase 2 exposes confirm
+        (`draft → created`), cancel (`→ cancelled`) and recovery (`cancelled → created`);
+        other edges belong to later phases (memory D-API-21).
+      properties:
+        to:
+          allOf:
+          - $ref: '#/components/schemas/TransitionToEnum'
+          description: |-
+            created: confirm a draft or recover a cancelled shipment; cancelled: cancel.
+
+            * `created` - created
+            * `cancelled` - cancelled
+        expected_status:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentStatusEnum'
+          description: |-
+            The status the client last saw; 409 shipment.status_conflict if it changed.
+
+            * `draft` - Draft
+            * `created` - Created
+            * `received_at_warehouse` - Received at warehouse
+            * `sorted` - Sorted
+            * `assigned` - Assigned
+            * `loaded` - Loaded
+            * `out_for_delivery` - Out for delivery
+            * `delivered` - Delivered
+            * `delivery_failed` - Delivery failed
+            * `returning` - Returning
+            * `returned_to_sender` - Returned to sender
+            * `cancelled` - Cancelled
+        reason:
+          type: string
+          default: ''
+          description: Required to cancel or recover.
+          maxLength: 500
+      required:
+      - expected_status
+      - to
+    TransitionToEnum:
+      enum:
+      - created
+      - cancelled
+      type: string
+      description: |-
+        * `created` - created
+        * `cancelled` - cancelled
     User:
       type: object
       description: A company member as returned by the users API. Explicit fields
