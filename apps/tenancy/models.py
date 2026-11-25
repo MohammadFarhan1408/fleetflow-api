@@ -1,6 +1,9 @@
+from datetime import date
 from typing import Self
+from zoneinfo import ZoneInfo
 
 from django.db import models
+from django.utils import timezone
 
 from apps.core.models import PublicIdModel, TimeStampedModel
 from apps.tenancy.validators import (
@@ -48,6 +51,10 @@ class Company(PublicIdModel, TimeStampedModel):
     @property
     def is_active(self) -> bool:
         return self.status == CompanyStatus.ACTIVE
+
+    def local_today(self) -> date:
+        """Today's date in the company's timezone: the business day (architecture §18)."""
+        return timezone.localdate(timezone=ZoneInfo(self.timezone))
 
 
 class TenantQuerySet[M: models.Model](models.QuerySet[M]):

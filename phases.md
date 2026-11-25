@@ -87,10 +87,10 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 - **Status**: IN PROGRESS (plan approved by the owner 2026-11-24; decisions D-API-25)
 - **Approved delivery plan (4 PRs, merged in order):**
-  1. **`feature/api-uploads`**
+  1. **`feature/api-uploads`** (merged, PR #11)
      - SeaweedFS in Compose and CI, boto3 (no django-storages), `S3_*` settings, a storage check in `/health/ready`.
      - `core/storage.py`, the generic `uploads` app (presigned PUT with signed size and type, confirm with magic-byte check and lossless EXIF/XMP/IPTC stripping, attach, ETag swap protection, hourly purge of unattached uploads), `uploads.create`.
-  2. **`feature/api-fleet`**
+  2. **`feature/api-fleet`** (pushed for review, decisions D-API-26)
      - `Driver` (one-to-one with a user holding the `driver` role) and `Vehicle` (home branch, license category, weight and volume capacity), suspension and out-of-service status with a reason, leave with an overlap constraint, archive.
      - Availability on a date (`available_on` filter and `availability` in responses). Branch scoping shared with shipments, `fleet.view`, `fleet.manage` and `fleet.all_branches`.
   3. **`feature/api-fleet-documents`**

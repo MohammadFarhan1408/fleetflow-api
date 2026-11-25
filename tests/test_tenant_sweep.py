@@ -17,6 +17,7 @@ from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode
 from apps.accounts.tests.conftest import login
 from apps.customers.factories import AddressFactory, CustomerFactory
+from apps.fleet.factories import DriverFactory, DriverLeaveFactory, VehicleFactory
 from apps.shipments.factories import ShipmentFactory
 from apps.tenancy.factories import CompanyFactory
 from apps.tenancy.models import Company
@@ -62,6 +63,31 @@ def _upload_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return {"public_id": upload.public_id}, [str(upload.public_id), upload.object_key]
 
 
+def _driver_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    driver = DriverFactory.create(company=company, user__full_name="Company A Driver")
+    return {"public_id": driver.public_id}, [
+        str(driver.public_id),
+        driver.user.full_name,
+        driver.user.email,
+    ]
+
+
+def _driver_leaves_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    kwargs, secrets = _leave_in(company)
+    return {"driver_id": kwargs["driver_id"]}, secrets
+
+
+def _leave_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    leave = DriverLeaveFactory.create(driver__company=company, reason="Company A secret leave")
+    kwargs = {"driver_id": leave.driver.public_id, "public_id": leave.public_id}
+    return kwargs, [str(leave.public_id), leave.reason, leave.driver.user.email]
+
+
+def _vehicle_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    vehicle = VehicleFactory.create(company=company, registration_number="AAA 111")
+    return {"public_id": vehicle.public_id}, [str(vehicle.public_id), vehicle.registration_number]
+
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
@@ -76,6 +102,14 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "shipment-correction": _shipment_in,
     "shipment-events": _shipment_in,
     "upload-confirm": _upload_in,
+    "driver-detail": _driver_in,
+    "driver-status": _driver_in,
+    "driver-archive": _driver_in,
+    "driver-leave-list": _driver_leaves_in,
+    "driver-leave-detail": _leave_in,
+    "vehicle-detail": _vehicle_in,
+    "vehicle-status": _vehicle_in,
+    "vehicle-archive": _vehicle_in,
 }
 
 # Routes that are public by design: the path segment is a bearer credential, not a
@@ -88,6 +122,8 @@ LIST_ROUTES: dict[str, ObjectFactory] = {
     "user-list": _user_in,
     "customer-list": _customer_in,
     "shipment-list": _shipment_in,
+    "driver-list": _driver_in,
+    "vehicle-list": _vehicle_in,
 }
 
 # Valid for users, customers and addresses alike, so each route reaches its object lookup.
