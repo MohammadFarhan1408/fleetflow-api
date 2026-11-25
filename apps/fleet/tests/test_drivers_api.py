@@ -61,8 +61,9 @@ def test_create_driver_for_a_driver_user(
         "active",
         "",
     )
-    assert body["availability"]["available"] is True
-    assert body["availability"]["reasons"] == []
+    # A new driver cannot take work until a licence is on file.
+    assert body["availability"]["available"] is False
+    assert body["availability"]["reasons"] == ["license_missing"]
     driver = Driver.objects.get(public_id=body["public_id"])
     assert driver.company == driver_user.company
     entry = AuditLog.objects.get(action=AuditAction.DRIVER_CREATED)

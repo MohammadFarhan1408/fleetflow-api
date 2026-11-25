@@ -179,6 +179,8 @@ SPECTACULAR_SETTINGS = {
         "LicenseCategoryEnum": "apps.fleet.models.LicenseCategory",
         "DriverUnavailableReasonEnum": "apps.fleet.models.DriverUnavailableReason",
         "VehicleUnavailableReasonEnum": "apps.fleet.models.VehicleUnavailableReason",
+        "DriverDocumentTypeEnum": "apps.fleet.models.DriverDocumentType",
+        "VehicleDocumentTypeEnum": "apps.fleet.models.VehicleDocumentType",
         "UploadPurposeEnum": "apps.uploads.models.UploadPurpose",
         "UploadContentTypeEnum": "apps.uploads.models.UploadContentType",
         "UploadStatusEnum": "apps.uploads.models.UploadStatus",

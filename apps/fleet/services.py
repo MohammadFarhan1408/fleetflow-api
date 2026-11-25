@@ -4,10 +4,11 @@ the selector still cannot touch another tenant's or branch's data."""
 
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -19,15 +20,20 @@ from apps.core.errors import DomainError, ErrorCode, invalid_reference
 from apps.fleet import selectors
 from apps.fleet.models import (
     Driver,
+    DriverDocument,
     DriverLeave,
     DriverStatus,
+    FleetDocument,
     LicenseCategory,
     Vehicle,
+    VehicleDocument,
     VehicleStatus,
     normalize_registration,
 )
 from apps.fleet.permissions import FLEET_ALL_BRANCHES
 from apps.tenancy.models import Branch
+from apps.uploads import services as uploads
+from apps.uploads.models import UploadPurpose
 
 
 @dataclass(frozen=True)
@@ -73,7 +79,7 @@ def _branch_in_scope(actor: User, branch_id: uuid.UUID) -> Branch:
 def _audit(
     action: AuditAction,
     actor: User,
-    obj: Driver | Vehicle | DriverLeave,
+    obj: Driver | Vehicle | DriverLeave | FleetDocument,
     object_type: str,
     request: HttpRequest,
     after: dict[str, str] | None = None,
@@ -250,7 +256,7 @@ def delete_leave(*, actor: User, driver: Driver, leave: DriverLeave, request: Ht
 
 def _lock_vehicle(actor: User, vehicle: Vehicle) -> Vehicle:
     locked = (
-        selectors.vehicles_for_user(actor)
+        selectors.vehicles_in_scope(actor)
         .select_for_update(of=("self",))
         .filter(pk=vehicle.pk)
         .first()
@@ -350,3 +356,121 @@ def archive_vehicle(*, actor: User, vehicle: Vehicle, request: HttpRequest) -> V
     vehicle.save(update_fields=["archived_at", "updated_at"])
     _audit(AuditAction.VEHICLE_ARCHIVED, actor, vehicle, "vehicle", request)
     return vehicle
+
+
+# --- documents -----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DocumentFields:
+    type: str
+    upload_id: uuid.UUID
+    number: str = ""
+    issued_on: date | None = None
+    expires_on: date | None = None
+    categories: list[str] | None = None  # driver documents only
+
+
+def _add_document(
+    *,
+    actor: User,
+    document: DriverDocument | VehicleDocument,
+    fields: DocumentFields,
+    request: HttpRequest,
+) -> None:
+    """Validate, claim the upload and save, all in the caller's transaction, so a failure
+    leaves the upload free to use again. The DB enforces the type rules as well."""
+    document.type = fields.type
+    document.number = fields.number.strip()
+    document.issued_on = fields.issued_on
+    document.expires_on = fields.expires_on
+    if isinstance(document, DriverDocument):
+        document.categories = list(fields.categories or [])
+    document.full_clean(exclude=["driver", "vehicle", "upload"], validate_constraints=False)
+    try:
+        document.upload = uploads.attach_upload(
+            actor=actor, upload_id=fields.upload_id, purpose=UploadPurpose.FLEET_DOCUMENT
+        )
+    except DomainError as error:
+        if error.error_code == ErrorCode.VALIDATION_INVALID_REFERENCE:
+            raise invalid_reference("upload_id", "Upload not found.") from None
+        raise
+    document.save()
+    # IDs and enums only: the number is a personal identifier (rules.md §3).
+    _audit(
+        AuditAction.FLEET_DOCUMENT_ADDED,
+        actor,
+        document,
+        "fleet_document",
+        request,
+        {"type": fields.type},
+    )
+
+
+@transaction.atomic
+def add_driver_document(
+    *, actor: User, driver: Driver, fields: DocumentFields, request: HttpRequest
+) -> DriverDocument:
+    driver = _lock_driver(actor, driver)
+    _ensure_editable_driver(driver)
+    document = DriverDocument(company=actor.company, driver=driver)
+    _add_document(actor=actor, document=document, fields=fields, request=request)
+    return document
+
+
+@transaction.atomic
+def add_vehicle_document(
+    *, actor: User, vehicle: Vehicle, fields: DocumentFields, request: HttpRequest
+) -> VehicleDocument:
+    vehicle = _lock_vehicle(actor, vehicle)
+    _ensure_editable_vehicle(vehicle)
+    document = VehicleDocument(company=actor.company, vehicle=vehicle)
+    _add_document(actor=actor, document=document, fields=fields, request=request)
+    return document
+
+
+def _scoped_document[D: DriverDocument | VehicleDocument](
+    actor: User, document: D, *, lock: bool
+) -> D:
+    """Re-find `document` through the actor's company and branch scope, so a caller that
+    skipped the selector still cannot reach another tenant's or branch's file."""
+    documents: QuerySet[D]
+    if isinstance(document, DriverDocument):
+        documents = DriverDocument.objects.filter(  # type: ignore[assignment]
+            driver__in=selectors.drivers_in_scope(actor)
+        )
+    else:
+        documents = VehicleDocument.objects.filter(  # type: ignore[assignment]
+            vehicle__in=selectors.vehicles_in_scope(actor)
+        )
+    if lock:
+        documents = documents.select_for_update(of=("self",))
+    found = documents.select_related("upload").filter(pk=document.pk).first()
+    if found is None:
+        raise DomainError(ErrorCode.NOT_FOUND)
+    return found
+
+
+@transaction.atomic
+def archive_document[D: DriverDocument | VehicleDocument](
+    *, actor: User, document: D, request: HttpRequest
+) -> D:
+    """Archive the document so it no longer counts. Repeating it is a no-op."""
+    locked = _scoped_document(actor, document, lock=True)
+    if locked.is_archived:
+        return locked
+    locked.archived_at = timezone.now()
+    locked.save(update_fields=["archived_at", "updated_at"])
+    _audit(AuditAction.FLEET_DOCUMENT_ARCHIVED, actor, locked, "fleet_document", request)
+    return locked
+
+
+def download_document(
+    *, actor: User, document: DriverDocument | VehicleDocument, request: HttpRequest
+) -> tuple[str, datetime]:
+    """A 5-minute presigned GET for the document's file. The view has checked `fleet.manage`;
+    each download is audited because the file is personal data."""
+    locked = _scoped_document(actor, document, lock=False)
+    url, expires_at = uploads.presign_download(locked.upload)
+    _audit(AuditAction.FLEET_DOCUMENT_DOWNLOADED, actor, locked, "fleet_document", request)
+    return url, expires_at

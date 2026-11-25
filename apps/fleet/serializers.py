@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.fields import empty
 
@@ -9,12 +10,19 @@ from apps.core.validators import validate_e164
 from apps.fleet import selectors
 from apps.fleet.constants import MAX_LEAVE_DAYS, MAX_VEHICLE_VOLUME_M3, MAX_VEHICLE_WEIGHT_KG
 from apps.fleet.models import (
+    EXPIRY_REQUIRED_DRIVER_TYPES,
+    EXPIRY_REQUIRED_VEHICLE_TYPES,
     Driver,
+    DriverDocument,
+    DriverDocumentType,
     DriverLeave,
     DriverStatus,
     DriverUnavailableReason,
+    FleetDocument,
     LicenseCategory,
     Vehicle,
+    VehicleDocument,
+    VehicleDocumentType,
     VehicleStatus,
     VehicleUnavailableReason,
     normalize_registration,
@@ -51,7 +59,7 @@ class DriverListQuerySerializer(AvailabilityDateQuerySerializer, ListQuerySerial
     )
 
 
-class VehicleListQuerySerializer(ListQuerySerializer):
+class VehicleListQuerySerializer(AvailabilityDateQuerySerializer, ListQuerySerializer):
     status = serializers.ChoiceField(choices=VehicleStatus.choices, required=False)
     license_category = serializers.ChoiceField(choices=LicenseCategory.choices, required=False)
     search = serializers.CharField(
@@ -78,6 +86,7 @@ class DriverAvailabilitySerializer(serializers.Serializer[Any]):
 
 
 class VehicleAvailabilitySerializer(serializers.Serializer[Any]):
+    date = serializers.DateField()
     available = serializers.BooleanField()
     reasons = serializers.ListField(child=serializers.ChoiceField(VehicleUnavailableReason.choices))
 
@@ -106,6 +115,7 @@ class DriverSerializer(serializers.ModelSerializer[Driver]):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(DriverAvailabilitySerializer)
     def get_availability(self, driver: Driver) -> dict[str, Any]:
         reasons = selectors.driver_unavailability(driver)
         return DriverAvailabilitySerializer(
@@ -167,6 +177,9 @@ class LeaveWriteSerializer(serializers.Serializer[dict[str, Any]]):
 
 
 class VehicleSerializer(serializers.ModelSerializer[Vehicle]):
+    """Read model. The vehicle must come from `selectors.vehicles_for_user`, which carries
+    the document annotations; the evaluated date is `context["on_date"]`."""
+
     branch = _BranchSerializer(read_only=True)
     availability = serializers.SerializerMethodField()
 
@@ -190,9 +203,12 @@ class VehicleSerializer(serializers.ModelSerializer[Vehicle]):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(VehicleAvailabilitySerializer)
     def get_availability(self, vehicle: Vehicle) -> dict[str, Any]:
         reasons = selectors.vehicle_unavailability(vehicle)
-        return VehicleAvailabilitySerializer({"available": not reasons, "reasons": reasons}).data
+        return VehicleAvailabilitySerializer(
+            {"date": self.context["on_date"], "available": not reasons, "reasons": reasons}
+        ).data
 
 
 class VehicleWriteSerializer(serializers.Serializer[dict[str, Any]]):
@@ -218,3 +234,125 @@ class VehicleWriteSerializer(serializers.Serializer[dict[str, Any]]):
         registration = normalize_registration(value)
         validate_registration(registration)  # raises a Django ValidationError that DRF maps
         return registration
+
+
+# --- documents -----------------------------------------------------------------------------
+
+
+class DocumentListQuerySerializer(serializers.Serializer[dict[str, Any]]):
+    expires_before = serializers.DateField(
+        required=False, help_text="Only documents expiring before this date (exclusive)."
+    )
+    include_archived = serializers.BooleanField(required=False, default=False)
+
+
+class DriverDocumentListQuerySerializer(DocumentListQuerySerializer):
+    type = serializers.ChoiceField(choices=DriverDocumentType.choices, required=False)
+
+
+class VehicleDocumentListQuerySerializer(DocumentListQuerySerializer):
+    type = serializers.ChoiceField(choices=VehicleDocumentType.choices, required=False)
+
+
+class _DocumentSerializer[D: FleetDocument](serializers.ModelSerializer[D]):
+    """Read model. Context: `today` (company date, for `is_expired`) and `show_number`
+    (whether the viewer holds `fleet.manage`; others get `null`, memory D-API-27)."""
+
+    number = serializers.SerializerMethodField()
+    is_expired = serializers.SerializerMethodField()
+
+    def get_number(self, document: D) -> str | None:
+        return document.number if self.context["show_number"] else None
+
+    def get_is_expired(self, document: D) -> bool:
+        return document.expires_on is not None and document.expires_on < self.context["today"]
+
+
+class DriverDocumentSerializer(_DocumentSerializer[DriverDocument]):
+    class Meta:
+        model = DriverDocument
+        fields = [
+            "public_id",
+            "type",
+            "number",
+            "categories",
+            "issued_on",
+            "expires_on",
+            "is_expired",
+            "archived_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class VehicleDocumentSerializer(_DocumentSerializer[VehicleDocument]):
+    class Meta:
+        model = VehicleDocument
+        fields = [
+            "public_id",
+            "type",
+            "number",
+            "issued_on",
+            "expires_on",
+            "is_expired",
+            "archived_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class _DocumentWriteSerializer(serializers.Serializer[dict[str, Any]]):
+    expiry_required: tuple[str, ...] = ()
+
+    upload_id = serializers.UUIDField(help_text="A confirmed upload with purpose fleet_document.")
+    number = serializers.CharField(required=False, allow_blank=True, default="", max_length=50)
+    issued_on = serializers.DateField(required=False, allow_null=True, default=None)
+    expires_on = serializers.DateField(
+        required=False,
+        allow_null=True,
+        default=None,
+        help_text="Last valid day (included). Required for the types that expire.",
+    )
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        if attrs["type"] in self.expiry_required and attrs["expires_on"] is None:
+            raise serializers.ValidationError({"expires_on": "Required for this document type."})
+        issued_on, expires_on = attrs["issued_on"], attrs["expires_on"]
+        if issued_on and expires_on and issued_on > expires_on:
+            raise serializers.ValidationError({"expires_on": "Must not be before issued_on."})
+        return attrs
+
+
+class DriverDocumentWriteSerializer(_DocumentWriteSerializer):
+    expiry_required = tuple(EXPIRY_REQUIRED_DRIVER_TYPES)
+
+    type = serializers.ChoiceField(choices=DriverDocumentType.choices)
+    categories = serializers.ListField(
+        child=serializers.ChoiceField(choices=LicenseCategory.choices),
+        required=False,
+        default=list,
+        max_length=len(LicenseCategory),
+        help_text="Licence categories held (required for a licence, not allowed otherwise).",
+    )
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        attrs = super().validate(attrs)
+        is_license = attrs["type"] == DriverDocumentType.LICENSE
+        if is_license and not attrs["categories"]:
+            raise serializers.ValidationError({"categories": "A licence needs its categories."})
+        if not is_license and attrs["categories"]:
+            raise serializers.ValidationError({"categories": "Only a licence has categories."})
+        held = set(attrs["categories"])
+        attrs["categories"] = [c for c in LicenseCategory.values if c in held]
+        return attrs
+
+
+class VehicleDocumentWriteSerializer(_DocumentWriteSerializer):
+    expiry_required = tuple(EXPIRY_REQUIRED_VEHICLE_TYPES)
+
+    type = serializers.ChoiceField(choices=VehicleDocumentType.choices)
+
+
+class DownloadSerializer(serializers.Serializer[Any]):
+    url = serializers.URLField(help_text="Presigned GET, valid for 5 minutes.")
+    expires_at = serializers.DateTimeField()

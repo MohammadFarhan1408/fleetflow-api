@@ -14,21 +14,28 @@ from rest_framework.views import APIView
 
 from apps.accounts.authentication import current_user
 from apps.accounts.models import User
-from apps.accounts.permissions import HasRequiredPermission
+from apps.accounts.permissions import HasRequiredPermission, get_user_permissions
 from apps.core.idempotency import idempotent
 from apps.core.serializers import ErrorSerializer
 from apps.fleet import selectors, services
-from apps.fleet.models import Driver, DriverLeave, Vehicle
+from apps.fleet.models import Driver, DriverDocument, DriverLeave, Vehicle, VehicleDocument
 from apps.fleet.permissions import FLEET_MANAGE, FLEET_VIEW
 from apps.fleet.serializers import (
     AvailabilityDateQuerySerializer,
+    DownloadSerializer,
     DriverCreateSerializer,
+    DriverDocumentListQuerySerializer,
+    DriverDocumentSerializer,
+    DriverDocumentWriteSerializer,
     DriverListQuerySerializer,
     DriverSerializer,
     DriverStatusSerializer,
     DriverUpdateSerializer,
     LeaveSerializer,
     LeaveWriteSerializer,
+    VehicleDocumentListQuerySerializer,
+    VehicleDocumentSerializer,
+    VehicleDocumentWriteSerializer,
     VehicleListQuerySerializer,
     VehicleSerializer,
     VehicleStatusChangeSerializer,
@@ -71,8 +78,10 @@ def _driver_response(request: Request, driver: Driver, *, http_status: int = 200
 
 
 def _vehicle_response(request: Request, vehicle: Vehicle, *, http_status: int = 200) -> Response:
-    fresh = selectors.get_vehicle(current_user(request), vehicle.public_id)
-    return Response(VehicleSerializer(fresh).data, status=http_status)
+    user = current_user(request)
+    on_date = _on_date(request, user)
+    fresh = selectors.get_vehicle(user, vehicle.public_id, on_date)
+    return Response(VehicleSerializer(fresh, context={"on_date": on_date}).data, status=http_status)
 
 
 # --- drivers -------------------------------------------------------------------------------
@@ -232,10 +241,19 @@ class VehicleListCreateView(FleetAccess, ListAPIView[Vehicle]):
     def get_queryset(self) -> QuerySet[Vehicle]:
         query = VehicleListQuerySerializer(data=self.request.query_params)
         query.is_valid(raise_exception=True)
-        return selectors.list_vehicles(current_user(self.request), **query.validated_data)
+        user = current_user(self.request)
+        filters = dict(query.validated_data)
+        on_date = filters.pop("availability_date", None) or user.company.local_today()
+        return selectors.list_vehicles(user, on_date=on_date, **filters)
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        user = current_user(self.request)
+        return {**super().get_serializer_context(), "on_date": _on_date(self.request, user)}
 
     @extend_schema(
-        request=VehicleWriteSerializer, responses={201: VehicleSerializer, **WRITE_ERRORS}
+        request=VehicleWriteSerializer,
+        parameters=[AvailabilityDateQuerySerializer],
+        responses={201: VehicleSerializer, **WRITE_ERRORS},
     )
     @idempotent
     def post(self, request: Request) -> Response:
@@ -253,19 +271,25 @@ class VehicleDetailView(FleetAccess):
     """Read (`fleet.view`) or update (`fleet.manage`) one vehicle. Archived vehicles can be
     read but not changed (409 `vehicle.archived`)."""
 
-    @extend_schema(responses={200: VehicleSerializer, **READ_ERRORS})
+    @extend_schema(
+        parameters=[AvailabilityDateQuerySerializer],
+        responses={200: VehicleSerializer, **READ_ERRORS},
+    )
     def get(self, request: Request, public_id: uuid.UUID) -> Response:
-        vehicle = selectors.get_vehicle(current_user(request), public_id)
-        return Response(VehicleSerializer(vehicle).data)
+        user = current_user(request)
+        on_date = _on_date(request, user)
+        vehicle = selectors.get_vehicle(user, public_id, on_date)
+        return Response(VehicleSerializer(vehicle, context={"on_date": on_date}).data)
 
     @extend_schema(
         request=VehicleWriteSerializer(partial=True),
+        parameters=[AvailabilityDateQuerySerializer],
         responses={200: VehicleSerializer, **WRITE_ERRORS},
     )
     @idempotent
     def patch(self, request: Request, public_id: uuid.UUID) -> Response:
         actor = current_user(request)
-        vehicle = selectors.get_vehicle(actor, public_id)
+        vehicle = selectors.get_vehicle(actor, public_id, actor.company.local_today())
         serializer = VehicleWriteSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         fields = replace(services.VehicleFields.of(vehicle), **serializer.validated_data)
@@ -278,11 +302,13 @@ class VehicleStatusView(FleetAccess):
     A reason is required unless the status is `active`."""
 
     @extend_schema(
-        request=VehicleStatusChangeSerializer, responses={200: VehicleSerializer, **WRITE_ERRORS}
+        request=VehicleStatusChangeSerializer,
+        parameters=[AvailabilityDateQuerySerializer],
+        responses={200: VehicleSerializer, **WRITE_ERRORS},
     )
     def post(self, request: Request, public_id: uuid.UUID) -> Response:
         actor = current_user(request)
-        vehicle = selectors.get_vehicle(actor, public_id)
+        vehicle = selectors.get_vehicle(actor, public_id, actor.company.local_today())
         serializer = VehicleStatusChangeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         vehicle = services.set_vehicle_status(
@@ -294,9 +320,186 @@ class VehicleStatusView(FleetAccess):
 class VehicleArchiveView(FleetAccess):
     """Archive a vehicle (`fleet.manage`). Repeating it is a no-op."""
 
-    @extend_schema(request=None, responses={200: VehicleSerializer, **READ_ERRORS})
+    @extend_schema(
+        request=None,
+        parameters=[AvailabilityDateQuerySerializer],
+        responses={200: VehicleSerializer, **READ_ERRORS},
+    )
     def post(self, request: Request, public_id: uuid.UUID) -> Response:
         actor = current_user(request)
-        vehicle = selectors.get_vehicle(actor, public_id)
+        vehicle = selectors.get_vehicle(actor, public_id, actor.company.local_today())
         vehicle = services.archive_vehicle(actor=actor, vehicle=vehicle, request=request)
         return _vehicle_response(request, vehicle)
+
+
+# --- documents -----------------------------------------------------------------------------
+# Four views per owner type. Each finds the owner through the scoped selector, then the
+# document through the owner, before it reads the body (a missing or foreign ID is 404).
+# Reads need `fleet.view`; every POST, the download included, needs `fleet.manage`, because
+# licence scans are personal data (memory D-API-27).
+
+
+def _document_context(request: Request) -> dict[str, Any]:
+    user = current_user(request)
+    return {
+        "today": user.company.local_today(),
+        "show_number": FLEET_MANAGE in get_user_permissions(user),
+    }
+
+
+def _driver_of(request: Request, driver_id: uuid.UUID) -> Driver:
+    user = current_user(request)
+    return selectors.get_driver(user, driver_id, user.company.local_today())
+
+
+def _vehicle_of(request: Request, vehicle_id: uuid.UUID) -> Vehicle:
+    user = current_user(request)
+    return selectors.get_vehicle(user, vehicle_id, user.company.local_today())
+
+
+def _download_response(request: Request, document: DriverDocument | VehicleDocument) -> Response:
+    url, expires_at = services.download_document(
+        actor=current_user(request), document=document, request=request
+    )
+    return Response(DownloadSerializer({"url": url, "expires_at": expires_at}).data)
+
+
+@extend_schema_view(get=extend_schema(parameters=[DriverDocumentListQuerySerializer]))
+class DriverDocumentListCreateView(FleetAccess, ListAPIView[DriverDocument]):
+    """List a driver's documents (`fleet.view`; the number only for `fleet.manage`) or add
+    one (`fleet.manage`). The file must be a confirmed `fleet_document` upload of yours."""
+
+    serializer_class = DriverDocumentSerializer
+
+    def get_queryset(self) -> QuerySet[DriverDocument]:
+        query = DriverDocumentListQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        driver = _driver_of(self.request, self.kwargs["driver_id"])
+        return selectors.list_documents(selectors.driver_documents(driver), **query.validated_data)
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        return {**super().get_serializer_context(), **_document_context(self.request)}
+
+    @extend_schema(
+        request=DriverDocumentWriteSerializer,
+        responses={201: DriverDocumentSerializer, **WRITE_ERRORS},
+    )
+    @idempotent
+    def post(self, request: Request, driver_id: uuid.UUID) -> Response:
+        driver = _driver_of(request, driver_id)
+        serializer = DriverDocumentWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document = services.add_driver_document(
+            actor=current_user(request),
+            driver=driver,
+            fields=services.DocumentFields(**serializer.validated_data),
+            request=request,
+        )
+        data = DriverDocumentSerializer(document, context=_document_context(request)).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class DriverDocumentDetailView(FleetAccess):
+    @extend_schema(responses={200: DriverDocumentSerializer, **READ_ERRORS})
+    def get(self, request: Request, driver_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        driver = _driver_of(request, driver_id)
+        document = selectors.get_document(selectors.driver_documents(driver), public_id)
+        return Response(DriverDocumentSerializer(document, context=_document_context(request)).data)
+
+
+class DriverDocumentArchiveView(FleetAccess):
+    """Archive a document (`fleet.manage`); it stops counting for availability. Repeating
+    it is a no-op."""
+
+    @extend_schema(request=None, responses={200: DriverDocumentSerializer, **READ_ERRORS})
+    def post(self, request: Request, driver_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        driver = _driver_of(request, driver_id)
+        document = selectors.get_document(selectors.driver_documents(driver), public_id)
+        document = services.archive_document(
+            actor=current_user(request), document=document, request=request
+        )
+        return Response(DriverDocumentSerializer(document, context=_document_context(request)).data)
+
+
+class DriverDocumentDownloadView(FleetAccess):
+    """A 5-minute download URL for the document's file (`fleet.manage` only: licence scans
+    are personal data). Each call is audited."""
+
+    @extend_schema(request=None, responses={200: DownloadSerializer, **READ_ERRORS, 409: ERROR})
+    def post(self, request: Request, driver_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        driver = _driver_of(request, driver_id)
+        document = selectors.get_document(selectors.driver_documents(driver), public_id)
+        return _download_response(request, document)
+
+
+@extend_schema_view(get=extend_schema(parameters=[VehicleDocumentListQuerySerializer]))
+class VehicleDocumentListCreateView(FleetAccess, ListAPIView[VehicleDocument]):
+    """List a vehicle's documents (`fleet.view`; the number only for `fleet.manage`) or add
+    one (`fleet.manage`). The file must be a confirmed `fleet_document` upload of yours."""
+
+    serializer_class = VehicleDocumentSerializer
+
+    def get_queryset(self) -> QuerySet[VehicleDocument]:
+        query = VehicleDocumentListQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        vehicle = _vehicle_of(self.request, self.kwargs["vehicle_id"])
+        return selectors.list_documents(
+            selectors.vehicle_documents(vehicle), **query.validated_data
+        )
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        return {**super().get_serializer_context(), **_document_context(self.request)}
+
+    @extend_schema(
+        request=VehicleDocumentWriteSerializer,
+        responses={201: VehicleDocumentSerializer, **WRITE_ERRORS},
+    )
+    @idempotent
+    def post(self, request: Request, vehicle_id: uuid.UUID) -> Response:
+        vehicle = _vehicle_of(request, vehicle_id)
+        serializer = VehicleDocumentWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document = services.add_vehicle_document(
+            actor=current_user(request),
+            vehicle=vehicle,
+            fields=services.DocumentFields(**serializer.validated_data),
+            request=request,
+        )
+        data = VehicleDocumentSerializer(document, context=_document_context(request)).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class VehicleDocumentDetailView(FleetAccess):
+    @extend_schema(responses={200: VehicleDocumentSerializer, **READ_ERRORS})
+    def get(self, request: Request, vehicle_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        vehicle = _vehicle_of(request, vehicle_id)
+        document = selectors.get_document(selectors.vehicle_documents(vehicle), public_id)
+        return Response(
+            VehicleDocumentSerializer(document, context=_document_context(request)).data
+        )
+
+
+class VehicleDocumentArchiveView(FleetAccess):
+    """Archive a document (`fleet.manage`); it stops counting for availability. Repeating
+    it is a no-op."""
+
+    @extend_schema(request=None, responses={200: VehicleDocumentSerializer, **READ_ERRORS})
+    def post(self, request: Request, vehicle_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        vehicle = _vehicle_of(request, vehicle_id)
+        document = selectors.get_document(selectors.vehicle_documents(vehicle), public_id)
+        document = services.archive_document(
+            actor=current_user(request), document=document, request=request
+        )
+        return Response(
+            VehicleDocumentSerializer(document, context=_document_context(request)).data
+        )
+
+
+class VehicleDocumentDownloadView(FleetAccess):
+    """A 5-minute download URL for the document's file (`fleet.manage` only). Audited."""
+
+    @extend_schema(request=None, responses={200: DownloadSerializer, **READ_ERRORS, 409: ERROR})
+    def post(self, request: Request, vehicle_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        vehicle = _vehicle_of(request, vehicle_id)
+        document = selectors.get_document(selectors.vehicle_documents(vehicle), public_id)
+        return _download_response(request, document)

@@ -40,6 +40,9 @@ class AuditAction(models.TextChoices):
     VEHICLE_CREATED = "vehicle.created", "Vehicle created"
     VEHICLE_STATUS_CHANGED = "vehicle.status_changed", "Vehicle status changed"
     VEHICLE_ARCHIVED = "vehicle.archived", "Vehicle archived"
+    FLEET_DOCUMENT_ADDED = "fleet_document.added", "Fleet document added"
+    FLEET_DOCUMENT_ARCHIVED = "fleet_document.archived", "Fleet document archived"
+    FLEET_DOCUMENT_DOWNLOADED = "fleet_document.downloaded", "Fleet document downloaded"
 
 
 class AuditLog(AppendOnlyModel):

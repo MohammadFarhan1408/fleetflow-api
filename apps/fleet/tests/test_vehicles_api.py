@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from django.db import IntegrityError, transaction
@@ -12,6 +12,7 @@ from apps.fleet.factories import VehicleFactory
 from apps.fleet.models import Vehicle, VehicleStatus
 from apps.fleet.tests.conftest import (
     VEHICLES_URL,
+    document_vehicle,
     make_user,
     new_key,
     post,
@@ -24,10 +25,15 @@ from apps.tenancy.models import Branch, Company
 pytestmark = pytest.mark.django_db
 
 
-def create(client: APIClient, branch: Branch, **overrides: Any) -> Any:
-    return post(
+def create(client: APIClient, branch: Branch, *, documented: bool = True, **overrides: Any) -> Any:
+    """Create through the API; by default the vehicle then gets valid registration and
+    insurance, so it is available unless a test says otherwise."""
+    response = post(
         client, VEHICLES_URL, vehicle_body(branch, **overrides), **{"Idempotency-Key": new_key()}
     )
+    if documented and response.status_code == 201:
+        document_vehicle(response.json()["public_id"])
+    return response
 
 
 def code(response: Any) -> str:
@@ -35,7 +41,7 @@ def code(response: Any) -> str:
 
 
 def test_create_vehicle(client: APIClient, branch: Branch) -> None:
-    response = create(client, branch)
+    response = create(client, branch, documented=False)
 
     assert response.status_code == 201, response.content
     body = response.json()
@@ -44,7 +50,9 @@ def test_create_vehicle(client: APIClient, branch: Branch) -> None:
     assert body["required_license_category"] == "C"
     assert (body["capacity_weight_kg"], body["capacity_volume_m3"]) == ("3500.000", "20.000")
     assert body["status"] == "active"
-    assert body["availability"] == {"available": True, "reasons": []}
+    # A new vehicle cannot take work until its documents are on file.
+    assert body["availability"]["available"] is False
+    assert body["availability"]["reasons"] == ["registration_missing", "insurance_missing"]
     entry = AuditLog.objects.get(action=AuditAction.VEHICLE_CREATED)
     assert entry.after is None  # IDs only; the plate stays out of the log
 
@@ -122,7 +130,7 @@ def test_the_database_enforces_unique_registrations(branch: Branch) -> None:
 def test_capacity_bounds(
     client: APIClient, branch: Branch, field: str, value: str, ok: bool
 ) -> None:
-    response = create(client, branch, **{field: value})
+    response = create(client, branch, **cast(dict[str, Any], {field: value}))
 
     assert response.status_code == (201 if ok else 400), response.content
     if not ok:
@@ -199,7 +207,8 @@ def test_status_requires_a_reason_unless_active(client: APIClient, branch: Branc
     back = post(client, url, {"status": "active"})
 
     assert missing.status_code == 400
-    assert maintenance.json()["availability"] == {"available": False, "reasons": ["in_maintenance"]}
+    assert maintenance.json()["availability"]["available"] is False
+    assert maintenance.json()["availability"]["reasons"] == ["in_maintenance"]
     assert broken.json()["availability"]["reasons"] == ["out_of_service"]
     assert back.json()["availability"]["available"] is True
     assert back.json()["status_reason"] == ""

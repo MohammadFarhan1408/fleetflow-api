@@ -35,4 +35,44 @@ urlpatterns = [
         views.VehicleArchiveView.as_view(),
         name="vehicle-archive",
     ),
+    path(
+        "drivers/<uuid:driver_id>/documents/",
+        views.DriverDocumentListCreateView.as_view(),
+        name="driver-document-list",
+    ),
+    path(
+        "drivers/<uuid:driver_id>/documents/<uuid:public_id>/",
+        views.DriverDocumentDetailView.as_view(),
+        name="driver-document-detail",
+    ),
+    path(
+        "drivers/<uuid:driver_id>/documents/<uuid:public_id>/archive/",
+        views.DriverDocumentArchiveView.as_view(),
+        name="driver-document-archive",
+    ),
+    path(
+        "drivers/<uuid:driver_id>/documents/<uuid:public_id>/download/",
+        views.DriverDocumentDownloadView.as_view(),
+        name="driver-document-download",
+    ),
+    path(
+        "vehicles/<uuid:vehicle_id>/documents/",
+        views.VehicleDocumentListCreateView.as_view(),
+        name="vehicle-document-list",
+    ),
+    path(
+        "vehicles/<uuid:vehicle_id>/documents/<uuid:public_id>/",
+        views.VehicleDocumentDetailView.as_view(),
+        name="vehicle-document-detail",
+    ),
+    path(
+        "vehicles/<uuid:vehicle_id>/documents/<uuid:public_id>/archive/",
+        views.VehicleDocumentArchiveView.as_view(),
+        name="vehicle-document-archive",
+    ),
+    path(
+        "vehicles/<uuid:vehicle_id>/documents/<uuid:public_id>/download/",
+        views.VehicleDocumentDownloadView.as_view(),
+        name="vehicle-document-download",
+    ),
 ]
