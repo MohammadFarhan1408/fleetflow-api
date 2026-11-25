@@ -4,6 +4,23 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: drivers, vehicles, leave and availability (Phase 3 PR 2)
+
+- **Permissions in `/me`:** `fleet.view` (owner, admin, ops_manager, dispatcher, fleet_manager, finance, viewer), `fleet.manage` (owner, admin, ops_manager, fleet_manager) and `fleet.all_branches` (owner, admin, ops_manager). Without `fleet.all_branches`, users see and change only drivers and vehicles of their own branches; another branch's answers 404.
+- **Drivers.** `GET|POST /api/v1/drivers/`, `GET|PATCH /api/v1/drivers/{public_id}/`.
+  - Create `{user_id, branch_id, phone}` (`Idempotency-Key` optional): `user_id` is the public ID of an active user of the company who has the `driver` role, invited first through `POST /api/v1/users/`. Otherwise 400 `validation.invalid_reference`; a second profile for the same user is 409 `driver.already_exists`.
+  - PATCH accepts `branch_id` and `phone`. An archived driver cannot be changed (409 `driver.archived`).
+  - Row: `public_id`, `user{public_id,full_name,email}`, `branch{public_id,code,name}`, `phone`, `status` (`active`, `suspended`), `status_reason`, `archived_at`, `availability{date,available,reasons[]}`, `created_at`, `updated_at`.
+  - List filters: `status`, `branch`, `search` (name or email contains), `include_archived`, `available=true|false`, `availability_date=YYYY-MM-DD` (default today in the company timezone; it applies to `availability` and to `available`).
+- **Status and archive.** `POST /api/v1/drivers/{id}/status/` `{status, reason}` (reason required unless `active`; repeating the same change is a no-op) and `POST /api/v1/drivers/{id}/archive/`. Both return the driver.
+- **Leave.** `GET|POST /api/v1/drivers/{id}/leave/` `{starts_on, ends_on, reason}` (both days included, at most 366 days) and `DELETE /api/v1/drivers/{id}/leave/{leave_id}/` (204). Overlapping periods are 409 `driver.leave_overlap`; leave that has started cannot be deleted (409 `driver.leave_started`).
+- **Vehicles.** `GET|POST /api/v1/vehicles/`, `GET|PATCH /api/v1/vehicles/{public_id}/`, `POST .../status/` `{status, reason}` and `POST .../archive/`.
+  - Body: `registration_number` (stored upper case with single spaces; unique per company, else 409 `vehicle.duplicate_registration`), `branch_id`, `required_license_category`, `capacity_weight_kg` (above 0, at most 60000), `capacity_volume_m3` (above 0, at most 200), optional `make` and `model`.
+  - Row adds `status` (`active`, `in_maintenance`, `out_of_service`), `status_reason`, `archived_at` and `availability{available,reasons[]}`. Archived vehicles cannot be changed (409 `vehicle.archived`).
+  - List filters: `status`, `branch`, `license_category`, `search` (registration prefix), `include_archived`, `available=true|false`.
+- **Enums:** `DriverStatusEnum`, `VehicleStatusEnum`, `LicenseCategoryEnum` (`A, B, BE, C1, C1E, C, CE, D1, D1E, D, DE`), `DriverUnavailableReasonEnum` (`archived`, `login_disabled`, `suspended`, `on_leave`) and `VehicleUnavailableReasonEnum` (`archived`, `in_maintenance`, `out_of_service`). Later PRs add reasons (additive).
+- **New error codes (all 409):** `driver.already_exists`, `driver.archived`, `driver.leave_overlap`, `driver.leave_started`, `vehicle.archived`, `vehicle.duplicate_registration`.
+
 ### api-additive: uploads (Phase 3 PR 1)
 
 First use of the §19 upload flow. Files go straight to private storage with a presigned URL; the API verifies them at confirm.

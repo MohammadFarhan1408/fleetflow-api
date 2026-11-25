@@ -7,7 +7,6 @@ import uuid
 from dataclasses import asdict, dataclass, replace
 from datetime import date
 from decimal import Decimal
-from zoneinfo import ZoneInfo
 
 import psycopg
 from django.db import IntegrityError, transaction
@@ -18,7 +17,7 @@ from apps.accounts.models import User
 from apps.accounts.permissions import get_user_permissions
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
-from apps.core.errors import DomainError, ErrorCode
+from apps.core.errors import DomainError, ErrorCode, invalid_reference
 from apps.customers.models import Address, Customer, GeocodeConfidence
 from apps.customers.services import AddressFields
 from apps.shipments import selectors
@@ -308,10 +307,10 @@ def _resolve(actor: User, fields: ShipmentFields) -> _Resolved:
     company = actor.company
     branch = selectors.branches_for_user(actor).filter(public_id=fields.branch_id).first()
     if branch is None:
-        raise _invalid_reference("branch_id", "Branch not found.")
+        raise invalid_reference("branch_id", "Branch not found.")
     customer = Customer.objects.for_company(company).filter(public_id=fields.customer_id).first()
     if customer is None:
-        raise _invalid_reference("customer_id", "Customer not found.")
+        raise invalid_reference("customer_id", "Customer not found.")
     if customer.is_archived:
         raise DomainError(
             ErrorCode.CUSTOMER_INACTIVE, errors={"customer_id": ["Customer is archived."]}
@@ -370,9 +369,7 @@ def _check_items(service_type: ServiceType, items: tuple[ItemFields, ...]) -> De
 
 def _check_schedule(company: Company, scheduled: date | None) -> None:
     # "Today" is the company's business day, not the server's (architecture §18).
-    if scheduled is not None and scheduled < timezone.localdate(
-        timezone=ZoneInfo(company.timezone)
-    ):
+    if scheduled is not None and scheduled < company.local_today():
         raise DomainError(
             ErrorCode.SHIPMENT_PAST_SCHEDULE,
             errors={"scheduled_pickup_date": ["Must be today or later."]},
@@ -455,7 +452,7 @@ def _snapshot(
             .first()
         )
         if source is None:
-            raise _invalid_reference(role, "Address not found.", field="address_id")
+            raise invalid_reference(role, "Address not found.", field="address_id")
         # An address-book entry may have no contact; its customer is the contact then.
         spec = replace(
             AddressFields.of(source), contact_name=source.contact_name or source.customer.name
@@ -470,12 +467,6 @@ def _snapshot(
         geocode_confidence=GeocodeConfidence.for_location(spec.location),
         **copied,
     )
-
-
-def _invalid_reference(key: str, message: str, *, field: str | None = None) -> DomainError:
-    # Same answer for "missing" and "another tenant's", so IDs are never confirmed.
-    errors: dict[str, object] = {key: {field: [message]} if field else [message]}
-    return DomainError(ErrorCode.VALIDATION_INVALID_REFERENCE, errors=errors)
 
 
 def _audit(

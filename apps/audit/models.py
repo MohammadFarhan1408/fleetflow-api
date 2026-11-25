@@ -32,6 +32,14 @@ class AuditAction(models.TextChoices):
     SHIPMENT_STATUS_CORRECTED = "shipment.status_corrected", "Shipment status corrected"
     SHIPMENT_STATUS_MISMATCH = "shipment.status_mismatch", "Shipment status mismatch found"
     UPLOAD_REJECTED = "upload.rejected", "Upload rejected"
+    DRIVER_CREATED = "driver.created", "Driver created"
+    DRIVER_STATUS_CHANGED = "driver.status_changed", "Driver status changed"
+    DRIVER_ARCHIVED = "driver.archived", "Driver archived"
+    DRIVER_LEAVE_ADDED = "driver.leave_added", "Driver leave added"
+    DRIVER_LEAVE_DELETED = "driver.leave_deleted", "Driver leave deleted"
+    VEHICLE_CREATED = "vehicle.created", "Vehicle created"
+    VEHICLE_STATUS_CHANGED = "vehicle.status_changed", "Vehicle status changed"
+    VEHICLE_ARCHIVED = "vehicle.archived", "Vehicle archived"
 
 
 class AuditLog(AppendOnlyModel):

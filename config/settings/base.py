@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.customers",
     "apps.uploads",
+    "apps.fleet",
     "apps.shipments",
 ]
 
@@ -173,6 +174,11 @@ SPECTACULAR_SETTINGS = {
         "ShipmentPriorityEnum": "apps.shipments.models.ShipmentPriority",
         "TrackingEventTypeEnum": "apps.shipments.models.TrackingEventType",
         "TrackingEventSourceEnum": "apps.shipments.models.EventSource",
+        "DriverStatusEnum": "apps.fleet.models.DriverStatus",
+        "VehicleStatusEnum": "apps.fleet.models.VehicleStatus",
+        "LicenseCategoryEnum": "apps.fleet.models.LicenseCategory",
+        "DriverUnavailableReasonEnum": "apps.fleet.models.DriverUnavailableReason",
+        "VehicleUnavailableReasonEnum": "apps.fleet.models.VehicleUnavailableReason",
         "UploadPurposeEnum": "apps.uploads.models.UploadPurpose",
         "UploadContentTypeEnum": "apps.uploads.models.UploadContentType",
         "UploadStatusEnum": "apps.uploads.models.UploadStatus",

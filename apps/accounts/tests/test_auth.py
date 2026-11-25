@@ -123,6 +123,7 @@ def test_me_returns_session_bootstrap(
     assert body["roles"] == ["dispatcher"]
     assert body["permissions"] == [
         "customers.view",
+        "fleet.view",
         "shipments.cancel",
         "shipments.create",
         "shipments.view",
@@ -139,6 +140,9 @@ def test_me_lists_permissions_for_owner(api_client: APIClient) -> None:
     assert body["permissions"] == [
         "customers.manage",
         "customers.view",
+        "fleet.all_branches",
+        "fleet.manage",
+        "fleet.view",
         "shipments.all_branches",
         "shipments.cancel",
         "shipments.correct_status",

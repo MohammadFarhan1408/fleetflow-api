@@ -70,6 +70,9 @@ def test_user_for_company_is_tenant_scoped() -> None:
 
 USERS = {"users.view", "users.manage"}
 CUSTOMERS = {"customers.view", "customers.manage"}
+FLEET_VIEW = {"fleet.view"}
+FLEET_MANAGE = {"fleet.view", "fleet.manage"}
+FLEET_ALL = {*FLEET_MANAGE, "fleet.all_branches"}
 SHIPMENTS_OWN_BRANCHES = {"shipments.view", "shipments.create", "shipments.cancel"}
 SHIPMENTS_ALL = {
     *SHIPMENTS_OWN_BRANCHES,
@@ -86,16 +89,20 @@ def test_all_builtin_roles_are_seeded() -> None:
 @pytest.mark.parametrize(
     ("role", "expected"),
     [
-        # Phase 1 users permissions; customers and shipments per D-API-21; uploads per D-API-25.
-        (RoleCode.OWNER, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, "uploads.create"}),
-        (RoleCode.ADMIN, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, "uploads.create"}),
-        (RoleCode.OPS_MANAGER, {"users.view", *CUSTOMERS, *SHIPMENTS_ALL, "uploads.create"}),
-        (RoleCode.DISPATCHER, {"customers.view", *SHIPMENTS_OWN_BRANCHES}),
+        # Phase 1 users permissions; customers and shipments per D-API-21; uploads and fleet
+        # per D-API-25.
+        (RoleCode.OWNER, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, *FLEET_ALL, "uploads.create"}),
+        (RoleCode.ADMIN, {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, *FLEET_ALL, "uploads.create"}),
+        (
+            RoleCode.OPS_MANAGER,
+            {"users.view", *CUSTOMERS, *SHIPMENTS_ALL, *FLEET_ALL, "uploads.create"},
+        ),
+        (RoleCode.DISPATCHER, {"customers.view", *SHIPMENTS_OWN_BRANCHES, *FLEET_VIEW}),
         (RoleCode.CUSTOMER_SERVICE, {*CUSTOMERS, *SHIPMENTS_OWN_BRANCHES}),
-        (RoleCode.FINANCE, {"customers.view", "shipments.view"}),
-        (RoleCode.VIEWER, {"customers.view", "shipments.view"}),
+        (RoleCode.FINANCE, {"customers.view", "shipments.view", *FLEET_VIEW}),
+        (RoleCode.VIEWER, {"customers.view", "shipments.view", *FLEET_VIEW}),
         (RoleCode.WAREHOUSE_STAFF, {"shipments.view"}),
-        (RoleCode.FLEET_MANAGER, {"shipments.view", "uploads.create"}),
+        (RoleCode.FLEET_MANAGER, {"shipments.view", "uploads.create", *FLEET_MANAGE}),
         (RoleCode.DRIVER, set()),
     ],
 )

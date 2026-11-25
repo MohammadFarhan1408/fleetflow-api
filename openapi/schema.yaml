@@ -689,6 +689,529 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/drivers/:
+    get:
+      operationId: drivers_list
+      description: |-
+        List drivers (`fleet.view`) or create a driver profile for an existing user with the
+        `driver` role (`fleet.manage`). Users see drivers of their own branches unless they
+        hold `fleet.all_branches`.
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: query
+        name: available
+        schema:
+          type: boolean
+        description: Only available (true) or only unavailable (false) rows.
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+        description: Branch public ID.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: include_archived
+        schema:
+          type: boolean
+          default: false
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+          default: ''
+          maxLength: 100
+          minLength: 1
+        description: Name or email contains.
+      - in: query
+        name: status
+        schema:
+          enum:
+          - active
+          - suspended
+          type: string
+          minLength: 1
+        description: |-
+          * `active` - Active
+          * `suspended` - Suspended
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDriverList'
+          description: ''
+    post:
+      operationId: drivers_create
+      description: |-
+        List drivers (`fleet.view`) or create a driver profile for an existing user with the
+        `driver` role (`fleet.manage`). Users see drivers of their own branches unless they
+        hold `fleet.all_branches`.
+      tags:
+      - drivers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{driver_id}/leave/:
+    get:
+      operationId: drivers_leave_list
+      description: |-
+        List a driver's leave (`fleet.view`) or add a period (`fleet.manage`). Both days are
+        included; periods of one driver cannot overlap (409 `driver.leave_overlap`).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLeaveList'
+          description: ''
+    post:
+      operationId: drivers_leave_create
+      description: |-
+        List a driver's leave (`fleet.view`) or add a period (`fleet.manage`). Both days are
+        included; periods of one driver cannot overlap (409 `driver.leave_overlap`).
+      parameters:
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Leave'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{driver_id}/leave/{public_id}/:
+    delete:
+      operationId: drivers_leave_destroy
+      description: |-
+        Delete leave that has not started (`fleet.manage`); started leave is history
+        (409 `driver.leave_started`).
+      parameters:
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{public_id}/:
+    get:
+      operationId: drivers_retrieve
+      description: |-
+        Read (`fleet.view`) or update (`fleet.manage`) one driver. Archived drivers can be
+        read but not changed (409 `driver.archived`).
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    patch:
+      operationId: drivers_partial_update
+      description: |-
+        Read (`fleet.view`) or update (`fleet.manage`) one driver. Archived drivers can be
+        read but not changed (409 `driver.archived`).
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedDriverUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{public_id}/archive/:
+    post:
+      operationId: drivers_archive_create
+      description: Archive a driver (`fleet.manage`). Repeating it is a no-op.
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{public_id}/status/:
+    post:
+      operationId: drivers_status_create
+      description: |-
+        Suspend or reinstate a driver (`fleet.manage`). A reason is required unless the
+        status is `active`. Repeating the same change is a no-op.
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverStatus'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/me/:
     get:
       operationId: me_retrieve
@@ -1579,6 +2102,372 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/vehicles/:
+    get:
+      operationId: vehicles_list
+      description: |-
+        List vehicles (`fleet.view`) or create one (`fleet.manage`). Users see vehicles of
+        their own branches unless they hold `fleet.all_branches`.
+      parameters:
+      - in: query
+        name: available
+        schema:
+          type: boolean
+        description: Only available (true) or only unavailable (false) rows.
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+        description: Branch public ID.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: include_archived
+        schema:
+          type: boolean
+          default: false
+      - in: query
+        name: license_category
+        schema:
+          enum:
+          - A
+          - B
+          - BE
+          - C1
+          - C1E
+          - C
+          - CE
+          - D1
+          - D1E
+          - D
+          - DE
+          type: string
+          minLength: 1
+        description: |-
+          * `A` - A
+          * `B` - B
+          * `BE` - BE
+          * `C1` - C1
+          * `C1E` - C1E
+          * `C` - C
+          * `CE` - CE
+          * `D1` - D1
+          * `D1E` - D1E
+          * `D` - D
+          * `DE` - DE
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+          default: ''
+          maxLength: 20
+          minLength: 1
+        description: Registration number prefix.
+      - in: query
+        name: status
+        schema:
+          enum:
+          - active
+          - in_maintenance
+          - out_of_service
+          type: string
+          minLength: 1
+        description: |-
+          * `active` - Active
+          * `in_maintenance` - In maintenance
+          * `out_of_service` - Out of service
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVehicleList'
+          description: ''
+    post:
+      operationId: vehicles_create
+      description: |-
+        List vehicles (`fleet.view`) or create one (`fleet.manage`). Users see vehicles of
+        their own branches unless they hold `fleet.all_branches`.
+      tags:
+      - vehicles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{public_id}/:
+    get:
+      operationId: vehicles_retrieve
+      description: |-
+        Read (`fleet.view`) or update (`fleet.manage`) one vehicle. Archived vehicles can be
+        read but not changed (409 `vehicle.archived`).
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    patch:
+      operationId: vehicles_partial_update
+      description: |-
+        Read (`fleet.view`) or update (`fleet.manage`) one vehicle. Archived vehicles can be
+        read but not changed (409 `vehicle.archived`).
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedVehicleWrite'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{public_id}/archive/:
+    post:
+      operationId: vehicles_archive_create
+      description: Archive a vehicle (`fleet.manage`). Repeating it is a no-op.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{public_id}/status/:
+    post:
+      operationId: vehicles_status_create
+      description: |-
+        Take a vehicle out of service or into maintenance, or put it back (`fleet.manage`).
+        A reason is required unless the status is `active`.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleStatusChange'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
 components:
   schemas:
     ActorRef:
@@ -1873,6 +2762,100 @@ components:
       required:
       - kind
       - name
+    Driver:
+      type: object
+      description: |-
+        Read model. The driver must come from `selectors.drivers_for_user`, which carries the
+        leave annotation; the evaluated date is `context["on_date"]`.
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/_DriverUser'
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/DriverStatusEnum'
+          readOnly: true
+        status_reason:
+          type: string
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        availability:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - archived_at
+      - availability
+      - branch
+      - created_at
+      - phone
+      - public_id
+      - status
+      - status_reason
+      - updated_at
+      - user
+    DriverCreate:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          description: Public ID of an existing user with the driver role.
+        branch_id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+          pattern: ^\+[1-9]\d{1,14}$
+          maxLength: 16
+      required:
+      - branch_id
+      - phone
+      - user_id
+    DriverStatus:
+      type: object
+      properties:
+        reason:
+          type: string
+          default: ''
+          description: Required for every status except active.
+          maxLength: 255
+        status:
+          $ref: '#/components/schemas/DriverStatusEnum'
+      required:
+      - status
+    DriverStatusEnum:
+      enum:
+      - active
+      - suspended
+      type: string
+      description: |-
+        * `active` - Active
+        * `suspended` - Suspended
     Error:
       type: object
       properties:
@@ -2001,6 +2984,77 @@ components:
       description: |-
         * `individual` - Individual
         * `business` - Business
+    Leave:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        starts_on:
+          type: string
+          format: date
+          readOnly: true
+        ends_on:
+          type: string
+          format: date
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - ends_on
+      - public_id
+      - reason
+      - starts_on
+    LeaveWrite:
+      type: object
+      properties:
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+          description: Last day of leave (included).
+        reason:
+          type: string
+          maxLength: 255
+      required:
+      - ends_on
+      - reason
+      - starts_on
+    LicenseCategoryEnum:
+      enum:
+      - A
+      - B
+      - BE
+      - C1
+      - C1E
+      - C
+      - CE
+      - D1
+      - D1E
+      - D
+      - DE
+      type: string
+      description: |-
+        * `A` - A
+        * `B` - B
+        * `BE` - BE
+        * `C1` - C1
+        * `C1E` - C1E
+        * `C` - C
+        * `CE` - CE
+        * `D1` - D1
+        * `D1E` - D1E
+        * `D` - D
+        * `DE` - DE
     Login:
       type: object
       properties:
@@ -2114,6 +3168,44 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Customer'
+    PaginatedDriverList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Driver'
+    PaginatedLeaveList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Leave'
     PaginatedShipmentListList:
       type: object
       required:
@@ -2171,6 +3263,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    PaginatedVehicleList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Vehicle'
     PasswordResetConfirm:
       type: object
       properties:
@@ -2277,6 +3388,16 @@ components:
             maxLength: 16
           - type: string
             maxLength: 0
+    PatchedDriverUpdate:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+          pattern: ^\+[1-9]\d{1,14}$
+          maxLength: 16
     PatchedShipmentWrite:
       type: object
       description: |-
@@ -2336,6 +3457,33 @@ components:
           maxItems: 100
         is_active:
           type: boolean
+    PatchedVehicleWrite:
+      type: object
+      properties:
+        registration_number:
+          type: string
+          maxLength: 30
+        branch_id:
+          type: string
+          format: uuid
+        required_license_category:
+          $ref: '#/components/schemas/LicenseCategoryEnum'
+        capacity_weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+        capacity_volume_m3:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,3})?$
+        make:
+          type: string
+          default: ''
+          maxLength: 100
+        model:
+          type: string
+          default: ''
+          maxLength: 100
     PublicDelivery:
       type: object
       properties:
@@ -3051,6 +4199,163 @@ components:
       - email
       - full_name
       - roles
+    Vehicle:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        registration_number:
+          type: string
+          readOnly: true
+        make:
+          type: string
+          readOnly: true
+        model:
+          type: string
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        required_license_category:
+          allOf:
+          - $ref: '#/components/schemas/LicenseCategoryEnum'
+          readOnly: true
+        capacity_weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+          readOnly: true
+        capacity_volume_m3:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,3})?$
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/VehicleStatusEnum'
+          readOnly: true
+        status_reason:
+          type: string
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        availability:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - archived_at
+      - availability
+      - branch
+      - capacity_volume_m3
+      - capacity_weight_kg
+      - created_at
+      - make
+      - model
+      - public_id
+      - registration_number
+      - required_license_category
+      - status
+      - status_reason
+      - updated_at
+    VehicleStatusChange:
+      type: object
+      properties:
+        reason:
+          type: string
+          default: ''
+          description: Required for every status except active.
+          maxLength: 255
+        status:
+          $ref: '#/components/schemas/VehicleStatusEnum'
+      required:
+      - status
+    VehicleStatusEnum:
+      enum:
+      - active
+      - in_maintenance
+      - out_of_service
+      type: string
+      description: |-
+        * `active` - Active
+        * `in_maintenance` - In maintenance
+        * `out_of_service` - Out of service
+    VehicleWrite:
+      type: object
+      properties:
+        registration_number:
+          type: string
+          maxLength: 30
+        branch_id:
+          type: string
+          format: uuid
+        required_license_category:
+          $ref: '#/components/schemas/LicenseCategoryEnum'
+        capacity_weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+        capacity_volume_m3:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,3})?$
+        make:
+          type: string
+          default: ''
+          maxLength: 100
+        model:
+          type: string
+          default: ''
+          maxLength: 100
+      required:
+      - branch_id
+      - capacity_volume_m3
+      - capacity_weight_kg
+      - registration_number
+      - required_license_category
+    _Branch:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+      required:
+      - code
+      - name
+      - public_id
+    _DriverUser:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+      required:
+      - email
+      - full_name
+      - public_id
   securitySchemes:
     jwtAuth:
       type: http

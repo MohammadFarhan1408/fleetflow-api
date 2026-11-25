@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 
 from apps.accounts.models import User
 from apps.accounts.permissions import get_user_permissions
+from apps.accounts.selectors import branches_in_scope
 from apps.shipments.models import (
     STATUS_EVENT_TYPES,
     AddressRole,
@@ -20,13 +21,8 @@ from apps.tenancy.models import Branch, CompanyStatus
 
 
 def branches_for_user(user: User) -> QuerySet[Branch]:
-    """Branches whose shipments `user` may see and create (architecture §8): every branch
-    of the company with `shipments.all_branches`, otherwise the user's own branches."""
-    # ponytail: shipments only for now; generalise when routes need branch scoping (Phase 4).
-    branches = Branch.objects.for_company(user.company)
-    if SHIPMENTS_ALL_BRANCHES in get_user_permissions(user):
-        return branches
-    return branches.filter(users=user)
+    """Branches whose shipments `user` may see and create (architecture §8)."""
+    return branches_in_scope(user, SHIPMENTS_ALL_BRANCHES)
 
 
 def shipments_for_user(user: User) -> QuerySet[Shipment]:

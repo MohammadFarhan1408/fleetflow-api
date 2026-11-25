@@ -3,7 +3,8 @@ from django.contrib.gis.geos import Point
 from django.db import models
 
 from apps.core.models import PublicIdModel, TimeStampedModel
-from apps.customers.validators import validate_country, validate_e164
+from apps.core.validators import validate_e164
+from apps.customers.validators import validate_country
 from apps.tenancy.models import TenantScopedModel
 
 

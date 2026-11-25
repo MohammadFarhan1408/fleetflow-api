@@ -63,6 +63,12 @@ class ErrorCode(StrEnum):
     SHIPMENT_NOT_DRAFT = "shipment.not_draft"
     SHIPMENT_INVALID_TRANSITION = "shipment.invalid_transition"
     SHIPMENT_STATUS_CONFLICT = "shipment.status_conflict"
+    DRIVER_ALREADY_EXISTS = "driver.already_exists"
+    DRIVER_ARCHIVED = "driver.archived"
+    DRIVER_LEAVE_OVERLAP = "driver.leave_overlap"
+    DRIVER_LEAVE_STARTED = "driver.leave_started"
+    VEHICLE_ARCHIVED = "vehicle.archived"
+    VEHICLE_DUPLICATE_REGISTRATION = "vehicle.duplicate_registration"
     UPLOAD_TOO_LARGE = "upload.too_large"
     UPLOAD_SIZE_MISMATCH = "upload.size_mismatch"
     UPLOAD_TYPE_MISMATCH = "upload.type_mismatch"
@@ -157,6 +163,20 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.SHIPMENT_STATUS_CONFLICT: ErrorSpec(
         409, ErrorType.CONFLICT, "The shipment status has changed; reload and retry"
     ),
+    ErrorCode.DRIVER_ALREADY_EXISTS: ErrorSpec(
+        409, ErrorType.CONFLICT, "This user already has a driver profile"
+    ),
+    ErrorCode.DRIVER_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Driver is archived"),
+    ErrorCode.DRIVER_LEAVE_OVERLAP: ErrorSpec(
+        409, ErrorType.CONFLICT, "The driver already has leave in this period"
+    ),
+    ErrorCode.DRIVER_LEAVE_STARTED: ErrorSpec(
+        409, ErrorType.CONFLICT, "Leave that has started cannot be deleted"
+    ),
+    ErrorCode.VEHICLE_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Vehicle is archived"),
+    ErrorCode.VEHICLE_DUPLICATE_REGISTRATION: ErrorSpec(
+        409, ErrorType.CONFLICT, "Registration number already in use"
+    ),
     ErrorCode.UPLOAD_TOO_LARGE: ErrorSpec(400, ErrorType.VALIDATION, "File is too large"),
     ErrorCode.UPLOAD_SIZE_MISMATCH: ErrorSpec(
         400, ErrorType.VALIDATION, "Uploaded file size does not match the request"
@@ -195,6 +215,13 @@ def error_payload(
     if errors:
         payload["errors"] = errors
     return payload
+
+
+def invalid_reference(key: str, message: str, *, field: str | None = None) -> DomainError:
+    """400 for an ID in the request body that does not resolve inside the caller's scope.
+    Same answer for "missing" and "another tenant's", so IDs are never confirmed."""
+    errors: dict[str, Any] = {key: {field: [message]} if field else [message]}
+    return DomainError(ErrorCode.VALIDATION_INVALID_REFERENCE, errors=errors)
 
 
 class DomainError(APIException):

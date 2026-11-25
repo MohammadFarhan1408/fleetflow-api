@@ -3,8 +3,9 @@ from typing import Any
 from django.contrib.gis.geos import Point
 from rest_framework import serializers
 
+from apps.core.validators import validate_e164
 from apps.customers.models import Address, Customer, CustomerKind
-from apps.customers.validators import validate_country, validate_e164
+from apps.customers.validators import validate_country
 
 
 class ListQuerySerializer(serializers.Serializer[dict[str, Any]]):
