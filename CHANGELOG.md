@@ -4,6 +4,18 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: driver profile and shifts (Phase 3 PR 4)
+
+For the driver app. All three endpoints need the `driver` role (permission `shifts.manage_own`, added to `/me` for that role only); other roles get 403 `permission.denied`.
+
+- **`GET /api/v1/me/driver/`** → the signed-in driver's profile (`MyDriver`: the same fields as a `Driver` row, with today's `availability`) plus `active_shift` (`{public_id, started_at, ended_at}` or `null`).
+- **`POST /api/v1/me/shift/start/`** `{occurred_at?}` → `201` `{public_id, started_at, ended_at}`. **`Idempotency-Key` is required** (400 `idempotency.key_required` without it); replaying the key returns the first response. A suspended driver is 409 `driver.suspended`; a shift already open is 409 `shift.already_open`. Leave, a missing licence or expired documents do not block a start.
+- **`POST /api/v1/me/shift/end/`** `{occurred_at?}` → `200` the shift with `ended_at`. `Idempotency-Key` required. No open shift is 409 `shift.not_open`.
+- **`occurred_at`** is the device's time (ISO 8601 with offset) for requests queued offline. At most 5 minutes in the future and 24 hours in the past; a start must not be before the previous shift's end; an end must be after the shift's start. Otherwise 400 `validation.invalid` with an `occurred_at` error. Default: server time.
+- **`driver.profile_inactive` (403):** a user with the `driver` role but no driver profile, or an archived one, gets this from all three endpoints. Login itself still succeeds (architecture §7 reworded). Show "contact dispatch".
+- **New error codes:** `driver.profile_inactive` (403), `driver.suspended` (409), `shift.already_open` (409), `shift.not_open` (409).
+- **New schemas:** `MyDriver`, `Shift`, `ShiftTime`. No enum changes.
+
 ### api-additive: driver and vehicle documents (Phase 3 PR 3)
 
 Documents attach confirmed uploads (purpose `fleet_document`) to drivers and vehicles. **Behaviour change to expect:** a driver without a valid licence, or a vehicle without valid registration and insurance, is now unavailable (`available=false` with a reason). Existing drivers and vehicles have no documents, so they show as unavailable until documents are added.

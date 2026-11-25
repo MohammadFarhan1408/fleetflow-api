@@ -67,6 +67,10 @@ class ErrorCode(StrEnum):
     DRIVER_ARCHIVED = "driver.archived"
     DRIVER_LEAVE_OVERLAP = "driver.leave_overlap"
     DRIVER_LEAVE_STARTED = "driver.leave_started"
+    DRIVER_PROFILE_INACTIVE = "driver.profile_inactive"
+    DRIVER_SUSPENDED = "driver.suspended"
+    SHIFT_ALREADY_OPEN = "shift.already_open"
+    SHIFT_NOT_OPEN = "shift.not_open"
     VEHICLE_ARCHIVED = "vehicle.archived"
     VEHICLE_DUPLICATE_REGISTRATION = "vehicle.duplicate_registration"
     UPLOAD_TOO_LARGE = "upload.too_large"
@@ -173,6 +177,12 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.DRIVER_LEAVE_STARTED: ErrorSpec(
         409, ErrorType.CONFLICT, "Leave that has started cannot be deleted"
     ),
+    ErrorCode.DRIVER_PROFILE_INACTIVE: ErrorSpec(
+        403, ErrorType.PERMISSION, "You have no active driver profile"
+    ),
+    ErrorCode.DRIVER_SUSPENDED: ErrorSpec(409, ErrorType.CONFLICT, "The driver is suspended"),
+    ErrorCode.SHIFT_ALREADY_OPEN: ErrorSpec(409, ErrorType.CONFLICT, "A shift is already open"),
+    ErrorCode.SHIFT_NOT_OPEN: ErrorSpec(409, ErrorType.CONFLICT, "There is no open shift"),
     ErrorCode.VEHICLE_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Vehicle is archived"),
     ErrorCode.VEHICLE_DUPLICATE_REGISTRATION: ErrorSpec(
         409, ErrorType.CONFLICT, "Registration number already in use"

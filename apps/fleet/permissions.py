@@ -7,3 +7,4 @@ Role assignments are seeded by `migrations/0002_seed_permissions.py` (memory D-A
 FLEET_VIEW = "fleet.view"
 FLEET_MANAGE = "fleet.manage"
 FLEET_ALL_BRANCHES = "fleet.all_branches"
+SHIFTS_MANAGE_OWN = "shifts.manage_own"  # the `driver` role only: start and end own shift

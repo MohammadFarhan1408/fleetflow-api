@@ -332,3 +332,38 @@ class VehicleDocument(FleetDocument):
 
     def __str__(self) -> str:
         return str(self.public_id)
+
+
+class Shift(TenantScopedModel, PublicIdModel, TimeStampedModel):
+    """A driver's working period, started and ended by the driver in the app. Times are the
+    device's (the app queues offline), bounded at the API; `*_recorded_at` is when the
+    server heard. One open shift per driver, enforced by the database."""
+
+    driver = models.ForeignKey(Driver, on_delete=models.PROTECT, related_name="shifts")
+    started_at = models.DateTimeField()
+    start_recorded_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    end_recorded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["driver"], condition=Q(ended_at__isnull=True), name="shift_one_open"
+            ),
+            models.CheckConstraint(
+                condition=Q(ended_at__isnull=True) | Q(ended_at__gt=F("started_at")),
+                name="shift_ends_after_start",
+            ),
+            models.CheckConstraint(
+                condition=Q(ended_at__isnull=True, end_recorded_at__isnull=True)
+                | Q(ended_at__isnull=False, end_recorded_at__isnull=False),
+                name="shift_end_fields_together",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return str(self.public_id)
+
+    @property
+    def is_open(self) -> bool:
+        return self.ended_at is None
