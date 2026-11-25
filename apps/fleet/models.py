@@ -2,7 +2,12 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.postgres.constraints import ExclusionConstraint
-from django.contrib.postgres.fields import DateRangeField, RangeBoundary, RangeOperators
+from django.contrib.postgres.fields import (
+    ArrayField,
+    DateRangeField,
+    RangeBoundary,
+    RangeOperators,
+)
 from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import F, Func, Q
@@ -53,12 +58,37 @@ class DriverUnavailableReason(models.TextChoices):
     LOGIN_DISABLED = "login_disabled", "Login disabled"
     SUSPENDED = "suspended", "Suspended"
     ON_LEAVE = "on_leave", "On leave"
+    LICENSE_MISSING = "license_missing", "No licence on file"
+    LICENSE_EXPIRED = "license_expired", "Licence expired"
 
 
 class VehicleUnavailableReason(models.TextChoices):
     ARCHIVED = "archived", "Archived"
     IN_MAINTENANCE = "in_maintenance", "In maintenance"
     OUT_OF_SERVICE = "out_of_service", "Out of service"
+    REGISTRATION_MISSING = "registration_missing", "No registration on file"
+    REGISTRATION_EXPIRED = "registration_expired", "Registration expired"
+    INSURANCE_MISSING = "insurance_missing", "No insurance on file"
+    INSURANCE_EXPIRED = "insurance_expired", "Insurance expired"
+
+
+class DriverDocumentType(models.TextChoices):
+    LICENSE = "license", "Driving licence"
+    ID_CARD = "id_card", "ID card"
+    MEDICAL = "medical", "Medical certificate"
+    OTHER = "other", "Other"
+
+
+class VehicleDocumentType(models.TextChoices):
+    REGISTRATION = "registration", "Registration"
+    INSURANCE = "insurance", "Insurance"
+    INSPECTION = "inspection", "Inspection"
+    OTHER = "other", "Other"
+
+
+# Types that must carry an `expires_on` (DB check). Others may.
+EXPIRY_REQUIRED_DRIVER_TYPES = (DriverDocumentType.LICENSE, DriverDocumentType.MEDICAL)
+EXPIRY_REQUIRED_VEHICLE_TYPES = (VehicleDocumentType.REGISTRATION, VehicleDocumentType.INSURANCE)
 
 
 validate_registration = RegexValidator(
@@ -206,3 +236,99 @@ class DriverLeave(TenantScopedModel, PublicIdModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.starts_on}..{self.ends_on}"
+
+
+class FleetDocument(TenantScopedModel, PublicIdModel, TimeStampedModel):
+    """A scanned document of a driver or vehicle, attached to a confirmed upload. Valid
+    through `expires_on`, inclusive, in the company timezone (memory D-API-27). Archived
+    rather than deleted; the file stays until the document is."""
+
+    number = models.CharField(max_length=50, blank=True)
+    issued_on = models.DateField(null=True, blank=True)
+    expires_on = models.DateField(null=True, blank=True)
+    upload = models.OneToOneField("uploads.Upload", on_delete=models.PROTECT, related_name="+")
+    archived_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        abstract = True
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
+
+
+class DriverDocument(FleetDocument):
+    driver = models.ForeignKey(Driver, on_delete=models.PROTECT, related_name="documents")
+    type = models.CharField(max_length=16, choices=DriverDocumentType.choices)
+    # Licence categories (Vienna set). Only on a licence; there is no `Driver.license_categories`.
+    categories = ArrayField(
+        models.CharField(max_length=3, choices=LicenseCategory.choices), default=list, blank=True
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(type__in=DriverDocumentType.values), name="driver_doc_type_valid"
+            ),
+            models.CheckConstraint(
+                condition=~Q(type__in=EXPIRY_REQUIRED_DRIVER_TYPES) | Q(expires_on__isnull=False),
+                name="driver_doc_expiry_required",
+            ),
+            models.CheckConstraint(
+                condition=Q(issued_on__isnull=True)
+                | Q(expires_on__isnull=True)
+                | Q(issued_on__lte=F("expires_on")),
+                name="driver_doc_dates_ordered",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(type=DriverDocumentType.LICENSE)
+                    & ~Q(categories=[])
+                    & Q(categories__contained_by=LicenseCategory.values)
+                )
+                | (~Q(type=DriverDocumentType.LICENSE) & Q(categories=[])),
+                name="driver_doc_categories_iff_license",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["driver", "type", "expires_on"],
+                condition=Q(archived_at__isnull=True),
+                name="driver_doc_live_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return str(self.public_id)
+
+
+class VehicleDocument(FleetDocument):
+    vehicle = models.ForeignKey(Vehicle, on_delete=models.PROTECT, related_name="documents")
+    type = models.CharField(max_length=16, choices=VehicleDocumentType.choices)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(type__in=VehicleDocumentType.values), name="vehicle_doc_type_valid"
+            ),
+            models.CheckConstraint(
+                condition=~Q(type__in=EXPIRY_REQUIRED_VEHICLE_TYPES) | Q(expires_on__isnull=False),
+                name="vehicle_doc_expiry_required",
+            ),
+            models.CheckConstraint(
+                condition=Q(issued_on__isnull=True)
+                | Q(expires_on__isnull=True)
+                | Q(issued_on__lte=F("expires_on")),
+                name="vehicle_doc_dates_ordered",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["vehicle", "type", "expires_on"],
+                condition=Q(archived_at__isnull=True),
+                name="vehicle_doc_live_idx",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return str(self.public_id)

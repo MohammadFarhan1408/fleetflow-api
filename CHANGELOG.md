@@ -4,6 +4,28 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: driver and vehicle documents (Phase 3 PR 3)
+
+Documents attach confirmed uploads (purpose `fleet_document`) to drivers and vehicles. **Behaviour change to expect:** a driver without a valid licence, or a vehicle without valid registration and insurance, is now unavailable (`available=false` with a reason). Existing drivers and vehicles have no documents, so they show as unavailable until documents are added.
+
+- **Endpoints**, the same four for `/api/v1/drivers/{id}/documents/` and `/api/v1/vehicles/{id}/documents/`:
+  - `GET .../documents/` (`fleet.view`). Filters: `type`, `expires_before=YYYY-MM-DD` (strict: a document expiring on that date is not listed), `include_archived`. Cursor-paginated.
+  - `POST .../documents/` (`fleet.manage`, `Idempotency-Key` optional) → `201`. Body: `type`, `upload_id`, optional `number`, `issued_on`, `expires_on`. Drivers also send `categories` (a licence needs at least one; any other type must not send any).
+  - `GET .../documents/{doc_id}/` (`fleet.view`).
+  - `POST .../documents/{doc_id}/archive/` (`fleet.manage`; repeating it is a no-op) → the document. An archived document no longer counts for availability.
+  - `POST .../documents/{doc_id}/download/` (`fleet.manage` only; `fleet.view` gets 403) → `{url, expires_at}`: a presigned GET valid for 5 minutes, served as an attachment. Every call is audited. Do not store the URL; ask again.
+- **Row:** `public_id`, `type`, `number`, `issued_on`, `expires_on`, `is_expired`, `archived_at`, `created_at`, plus `categories[]` on driver documents. **`number` is `null` unless the caller holds `fleet.manage`**, because it is a personal identifier; everything else is visible to `fleet.view`.
+- **Types:** driver `license`, `id_card`, `medical`, `other`; vehicle `registration`, `insurance`, `inspection`, `other`. `expires_on` is required for `license`, `medical`, `registration` and `insurance`, and `issued_on` must not be after it (else 400 `validation.invalid`). Licence categories are the Vienna set (`LicenseCategoryEnum`); they live only on the licence document.
+- **Validity:** a document is valid **through** `expires_on`, in the company timezone: expires today → valid, expired yesterday → expired. `is_expired` is `expires_on < today` (false without an expiry). A driver's licence, and a vehicle's registration and insurance, count when at least one non-archived document of that type is valid on the date.
+- **Attaching an upload** (the first use of `attach_upload`): another user's, another company's or an unknown upload is 400 `validation.invalid_reference` (key `upload_id`); an unconfirmed or changed one is 409 `upload.not_confirmed`; one already used is 409 `upload.in_use`. An archived driver or vehicle takes no documents (409 `driver.archived`, `vehicle.archived`).
+- **Availability reasons (additive enum values):**
+  - `DriverUnavailableReasonEnum`: `license_missing` (no non-archived licence), `license_expired` (licences exist but none is valid on the date).
+  - `VehicleUnavailableReasonEnum`: `registration_missing`, `registration_expired`, `insurance_missing`, `insurance_expired`.
+  - The `available` list filters use the same rule.
+- **Vehicles now take `availability_date=YYYY-MM-DD`**, like drivers (list, detail and every write response), because documents make availability date-dependent. `availability` on a vehicle now also carries `date`. Default: today in the company timezone.
+- **Schema:** `availability` on `Driver` and `Vehicle` is now typed (`DriverAvailability`, `VehicleAvailability` with the reason enums); before it was an untyped object. New enums `DriverDocumentTypeEnum` and `VehicleDocumentTypeEnum`.
+- No new error codes and no new permissions.
+
 ### api-additive: drivers, vehicles, leave and availability (Phase 3 PR 2)
 
 - **Permissions in `/me`:** `fleet.view` (owner, admin, ops_manager, dispatcher, fleet_manager, finance, viewer), `fleet.manage` (owner, admin, ops_manager, fleet_manager) and `fleet.all_branches` (owner, admin, ops_manager). Without `fleet.all_branches`, users see and change only drivers and vehicles of their own branches; another branch's answers 404.

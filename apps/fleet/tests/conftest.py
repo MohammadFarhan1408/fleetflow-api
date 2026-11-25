@@ -7,10 +7,15 @@ from rest_framework.test import APIClient
 from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode, User
 from apps.accounts.tests.conftest import client_for
-from apps.fleet.factories import DriverFactory
-from apps.fleet.models import Driver
+from apps.fleet.factories import (
+    DriverDocumentFactory,
+    DriverFactory,
+    VehicleDocumentFactory,
+)
+from apps.fleet.models import Driver, Vehicle, VehicleDocumentType
 from apps.tenancy.factories import BranchFactory, CompanyFactory
 from apps.tenancy.models import Branch, Company
+from apps.uploads.tests.conftest import confirm_url, make_jpeg, upload_file
 
 DRIVERS_URL = "/api/v1/drivers/"
 VEHICLES_URL = "/api/v1/vehicles/"
@@ -34,8 +39,21 @@ def make_user(company: Company, role: RoleCode, *branches: Branch) -> User:
     return user
 
 
-def make_driver(branch: Branch, **overrides: Any) -> Driver:
-    return DriverFactory.create(company=branch.company, branch=branch, **overrides)
+def make_driver(branch: Branch, *, licensed: bool = True, **overrides: Any) -> Driver:
+    """A driver with a valid licence, so they are available unless a test says otherwise."""
+    driver = DriverFactory.create(company=branch.company, branch=branch, **overrides)
+    if licensed:
+        DriverDocumentFactory.create(driver=driver)
+    return driver
+
+
+def document_vehicle(vehicle: Vehicle | str) -> Vehicle:
+    """Give a vehicle (or the public ID of one) valid registration and insurance."""
+    if isinstance(vehicle, str):
+        vehicle = Vehicle.objects.get(public_id=vehicle)
+    VehicleDocumentFactory.create(vehicle=vehicle)
+    VehicleDocumentFactory.create(vehicle=vehicle, type=VehicleDocumentType.INSURANCE)
+    return vehicle
 
 
 def vehicle_body(branch: Branch, **overrides: Any) -> dict[str, Any]:
@@ -48,6 +66,14 @@ def vehicle_body(branch: Branch, **overrides: Any) -> dict[str, Any]:
         "make": "MAN",
         "model": "TGL",
     } | overrides
+
+
+def confirmed_upload(client: APIClient, data: bytes | None = None) -> str:
+    """A real upload for `client`'s user: presigned PUT to the bucket, then confirm. Returns
+    its public ID, ready for a document to claim."""
+    ticket = upload_file(client, "image/jpeg", data or make_jpeg())
+    assert client.post(confirm_url(ticket["id"])).status_code == 200
+    return str(ticket["id"])
 
 
 def new_key() -> str:

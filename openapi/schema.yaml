@@ -821,6 +821,280 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/drivers/{driver_id}/documents/:
+    get:
+      operationId: drivers_documents_list
+      description: |-
+        List a driver's documents (`fleet.view`; the number only for `fleet.manage`) or add
+        one (`fleet.manage`). The file must be a confirmed `fleet_document` upload of yours.
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: expires_before
+        schema:
+          type: string
+          format: date
+        description: Only documents expiring before this date (exclusive).
+      - in: query
+        name: include_archived
+        schema:
+          type: boolean
+          default: false
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: type
+        schema:
+          enum:
+          - license
+          - id_card
+          - medical
+          - other
+          type: string
+          minLength: 1
+        description: |-
+          * `license` - Driving licence
+          * `id_card` - ID card
+          * `medical` - Medical certificate
+          * `other` - Other
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDriverDocumentList'
+          description: ''
+    post:
+      operationId: drivers_documents_create
+      description: |-
+        List a driver's documents (`fleet.view`; the number only for `fleet.manage`) or add
+        one (`fleet.manage`). The file must be a confirmed `fleet_document` upload of yours.
+      parameters:
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DriverDocumentWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverDocument'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{driver_id}/documents/{public_id}/:
+    get:
+      operationId: drivers_documents_retrieve
+      parameters:
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverDocument'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{driver_id}/documents/{public_id}/archive/:
+    post:
+      operationId: drivers_documents_archive_create
+      description: |-
+        Archive a document (`fleet.manage`); it stops counting for availability. Repeating
+        it is a no-op.
+      parameters:
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverDocument'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/drivers/{driver_id}/documents/{public_id}/download/:
+    post:
+      operationId: drivers_documents_download_create
+      description: |-
+        A 5-minute download URL for the document's file (`fleet.manage` only: licence scans
+        are personal data). Each call is audited.
+      parameters:
+      - in: path
+        name: driver_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Download'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/drivers/{driver_id}/leave/:
     get:
       operationId: drivers_leave_list
@@ -2110,6 +2384,13 @@ paths:
         their own branches unless they hold `fleet.all_branches`.
       parameters:
       - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: query
         name: available
         schema:
           type: boolean
@@ -2203,6 +2484,14 @@ paths:
       description: |-
         List vehicles (`fleet.view`) or create one (`fleet.manage`). Users see vehicles of
         their own branches unless they hold `fleet.all_branches`.
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
       tags:
       - vehicles
       requestBody:
@@ -2263,6 +2552,13 @@ paths:
         Read (`fleet.view`) or update (`fleet.manage`) one vehicle. Archived vehicles can be
         read but not changed (409 `vehicle.archived`).
       parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
       - in: path
         name: public_id
         schema:
@@ -2304,6 +2600,13 @@ paths:
         Read (`fleet.view`) or update (`fleet.manage`) one vehicle. Archived vehicles can be
         read but not changed (409 `vehicle.archived`).
       parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
       - in: path
         name: public_id
         schema:
@@ -2367,6 +2670,13 @@ paths:
       operationId: vehicles_archive_create
       description: Archive a vehicle (`fleet.manage`). Repeating it is a no-op.
       parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
       - in: path
         name: public_id
         schema:
@@ -2409,6 +2719,13 @@ paths:
         Take a vehicle out of service or into maintenance, or put it back (`fleet.manage`).
         A reason is required unless the status is `active`.
       parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
       - in: path
         name: public_id
         schema:
@@ -2463,6 +2780,279 @@ paths:
                 $ref: '#/components/schemas/Error'
           description: ''
         '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{vehicle_id}/documents/:
+    get:
+      operationId: vehicles_documents_list
+      description: |-
+        List a vehicle's documents (`fleet.view`; the number only for `fleet.manage`) or add
+        one (`fleet.manage`). The file must be a confirmed `fleet_document` upload of yours.
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - in: query
+        name: expires_before
+        schema:
+          type: string
+          format: date
+        description: Only documents expiring before this date (exclusive).
+      - in: query
+        name: include_archived
+        schema:
+          type: boolean
+          default: false
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: type
+        schema:
+          enum:
+          - registration
+          - insurance
+          - inspection
+          - other
+          type: string
+          minLength: 1
+        description: |-
+          * `registration` - Registration
+          * `insurance` - Insurance
+          * `inspection` - Inspection
+          * `other` - Other
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedVehicleDocumentList'
+          description: ''
+    post:
+      operationId: vehicles_documents_create
+      description: |-
+        List a vehicle's documents (`fleet.view`; the number only for `fleet.manage`) or add
+        one (`fleet.manage`). The file must be a confirmed `fleet_document` upload of yours.
+      parameters:
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleDocumentWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleDocument'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{vehicle_id}/documents/{public_id}/:
+    get:
+      operationId: vehicles_documents_retrieve
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleDocument'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{vehicle_id}/documents/{public_id}/archive/:
+    post:
+      operationId: vehicles_documents_archive_create
+      description: |-
+        Archive a document (`fleet.manage`); it stops counting for availability. Repeating
+        it is a no-op.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleDocument'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/vehicles/{vehicle_id}/documents/{public_id}/download/:
+    post:
+      operationId: vehicles_documents_download_create
+      description: A 5-minute download URL for the document's file (`fleet.manage`
+        only). Audited.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: vehicle_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - vehicles
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Download'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
           content:
             application/json:
               schema:
@@ -2762,6 +3352,19 @@ components:
       required:
       - kind
       - name
+    Download:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Presigned GET, valid for 5 minutes.
+        expires_at:
+          type: string
+          format: date-time
+      required:
+      - expires_at
+      - url
     Driver:
       type: object
       description: |-
@@ -2796,8 +3399,8 @@ components:
           readOnly: true
           nullable: true
         availability:
-          type: object
-          additionalProperties: {}
+          allOf:
+          - $ref: '#/components/schemas/DriverAvailability'
           readOnly: true
         created_at:
           type: string
@@ -2818,6 +3421,22 @@ components:
       - status_reason
       - updated_at
       - user
+    DriverAvailability:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        available:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverUnavailableReasonEnum'
+      required:
+      - available
+      - date
+      - reasons
     DriverCreate:
       type: object
       properties:
@@ -2836,6 +3455,105 @@ components:
       - branch_id
       - phone
       - user_id
+    DriverDocument:
+      type: object
+      description: |-
+        Read model. Context: `today` (company date, for `is_expired`) and `show_number`
+        (whether the viewer holds `fleet.manage`; others get `null`, memory D-API-27).
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/DriverDocumentTypeEnum'
+          readOnly: true
+        number:
+          type: string
+          nullable: true
+          readOnly: true
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LicenseCategoryEnum'
+          readOnly: true
+        issued_on:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        expires_on:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        is_expired:
+          type: boolean
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - archived_at
+      - categories
+      - created_at
+      - expires_on
+      - is_expired
+      - issued_on
+      - number
+      - public_id
+      - type
+    DriverDocumentTypeEnum:
+      enum:
+      - license
+      - id_card
+      - medical
+      - other
+      type: string
+      description: |-
+        * `license` - Driving licence
+        * `id_card` - ID card
+        * `medical` - Medical certificate
+        * `other` - Other
+    DriverDocumentWrite:
+      type: object
+      properties:
+        upload_id:
+          type: string
+          format: uuid
+          description: A confirmed upload with purpose fleet_document.
+        number:
+          type: string
+          default: ''
+          maxLength: 50
+        issued_on:
+          type: string
+          format: date
+          nullable: true
+        expires_on:
+          type: string
+          format: date
+          nullable: true
+          description: Last valid day (included). Required for the types that expire.
+        type:
+          $ref: '#/components/schemas/DriverDocumentTypeEnum'
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/LicenseCategoryEnum'
+          description: Licence categories held (required for a licence, not allowed
+            otherwise).
+          maxItems: 11
+      required:
+      - type
+      - upload_id
     DriverStatus:
       type: object
       properties:
@@ -2856,6 +3574,22 @@ components:
       description: |-
         * `active` - Active
         * `suspended` - Suspended
+    DriverUnavailableReasonEnum:
+      enum:
+      - archived
+      - login_disabled
+      - suspended
+      - on_leave
+      - license_missing
+      - license_expired
+      type: string
+      description: |-
+        * `archived` - Archived
+        * `login_disabled` - Login disabled
+        * `suspended` - Suspended
+        * `on_leave` - On leave
+        * `license_missing` - No licence on file
+        * `license_expired` - Licence expired
     Error:
       type: object
       properties:
@@ -3168,6 +3902,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Customer'
+    PaginatedDriverDocumentList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverDocument'
     PaginatedDriverList:
       type: object
       required:
@@ -3263,6 +4016,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/User'
+    PaginatedVehicleDocumentList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleDocument'
     PaginatedVehicleList:
       type: object
       required:
@@ -4201,6 +4973,9 @@ components:
       - roles
     Vehicle:
       type: object
+      description: |-
+        Read model. The vehicle must come from `selectors.vehicles_for_user`, which carries
+        the document annotations; the evaluated date is `context["on_date"]`.
       properties:
         public_id:
           type: string
@@ -4246,8 +5021,8 @@ components:
           readOnly: true
           nullable: true
         availability:
-          type: object
-          additionalProperties: {}
+          allOf:
+          - $ref: '#/components/schemas/VehicleAvailability'
           readOnly: true
         created_at:
           type: string
@@ -4272,6 +5047,108 @@ components:
       - status
       - status_reason
       - updated_at
+    VehicleAvailability:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        available:
+          type: boolean
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/VehicleUnavailableReasonEnum'
+      required:
+      - available
+      - date
+      - reasons
+    VehicleDocument:
+      type: object
+      description: |-
+        Read model. Context: `today` (company date, for `is_expired`) and `show_number`
+        (whether the viewer holds `fleet.manage`; others get `null`, memory D-API-27).
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/VehicleDocumentTypeEnum'
+          readOnly: true
+        number:
+          type: string
+          nullable: true
+          readOnly: true
+        issued_on:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        expires_on:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        is_expired:
+          type: boolean
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - archived_at
+      - created_at
+      - expires_on
+      - is_expired
+      - issued_on
+      - number
+      - public_id
+      - type
+    VehicleDocumentTypeEnum:
+      enum:
+      - registration
+      - insurance
+      - inspection
+      - other
+      type: string
+      description: |-
+        * `registration` - Registration
+        * `insurance` - Insurance
+        * `inspection` - Inspection
+        * `other` - Other
+    VehicleDocumentWrite:
+      type: object
+      properties:
+        upload_id:
+          type: string
+          format: uuid
+          description: A confirmed upload with purpose fleet_document.
+        number:
+          type: string
+          default: ''
+          maxLength: 50
+        issued_on:
+          type: string
+          format: date
+          nullable: true
+        expires_on:
+          type: string
+          format: date
+          nullable: true
+          description: Last valid day (included). Required for the types that expire.
+        type:
+          $ref: '#/components/schemas/VehicleDocumentTypeEnum'
+      required:
+      - type
+      - upload_id
     VehicleStatusChange:
       type: object
       properties:
@@ -4294,6 +5171,24 @@ components:
         * `active` - Active
         * `in_maintenance` - In maintenance
         * `out_of_service` - Out of service
+    VehicleUnavailableReasonEnum:
+      enum:
+      - archived
+      - in_maintenance
+      - out_of_service
+      - registration_missing
+      - registration_expired
+      - insurance_missing
+      - insurance_expired
+      type: string
+      description: |-
+        * `archived` - Archived
+        * `in_maintenance` - In maintenance
+        * `out_of_service` - Out of service
+        * `registration_missing` - No registration on file
+        * `registration_expired` - Registration expired
+        * `insurance_missing` - No insurance on file
+        * `insurance_expired` - Insurance expired
     VehicleWrite:
       type: object
       properties:

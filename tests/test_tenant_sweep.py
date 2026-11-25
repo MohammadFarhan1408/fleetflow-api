@@ -17,7 +17,13 @@ from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode
 from apps.accounts.tests.conftest import login
 from apps.customers.factories import AddressFactory, CustomerFactory
-from apps.fleet.factories import DriverFactory, DriverLeaveFactory, VehicleFactory
+from apps.fleet.factories import (
+    DriverDocumentFactory,
+    DriverFactory,
+    DriverLeaveFactory,
+    VehicleDocumentFactory,
+    VehicleFactory,
+)
 from apps.shipments.factories import ShipmentFactory
 from apps.tenancy.factories import CompanyFactory
 from apps.tenancy.models import Company
@@ -88,6 +94,28 @@ def _vehicle_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return {"public_id": vehicle.public_id}, [str(vehicle.public_id), vehicle.registration_number]
 
 
+def _driver_documents_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    kwargs, secrets = _driver_document_in(company)
+    return {"driver_id": kwargs["driver_id"]}, secrets
+
+
+def _driver_document_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    document = DriverDocumentFactory.create(driver__company=company, number="A-SECRET-LIC-77")
+    kwargs = {"driver_id": document.driver.public_id, "public_id": document.public_id}
+    return kwargs, [str(document.public_id), document.number, document.upload.object_key]
+
+
+def _vehicle_documents_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    kwargs, secrets = _vehicle_document_in(company)
+    return {"vehicle_id": kwargs["vehicle_id"]}, secrets
+
+
+def _vehicle_document_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    document = VehicleDocumentFactory.create(vehicle__company=company, number="A-SECRET-REG-77")
+    kwargs = {"vehicle_id": document.vehicle.public_id, "public_id": document.public_id}
+    return kwargs, [str(document.public_id), document.number, document.upload.object_key]
+
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
@@ -110,6 +138,14 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "vehicle-detail": _vehicle_in,
     "vehicle-status": _vehicle_in,
     "vehicle-archive": _vehicle_in,
+    "driver-document-list": _driver_documents_in,
+    "driver-document-detail": _driver_document_in,
+    "driver-document-archive": _driver_document_in,
+    "driver-document-download": _driver_document_in,
+    "vehicle-document-list": _vehicle_documents_in,
+    "vehicle-document-detail": _vehicle_document_in,
+    "vehicle-document-archive": _vehicle_document_in,
+    "vehicle-document-download": _vehicle_document_in,
 }
 
 # Routes that are public by design: the path segment is a bearer credential, not a
