@@ -17,6 +17,7 @@ from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode
 from apps.accounts.tests.conftest import login
 from apps.customers.factories import AddressFactory, CustomerFactory
+from apps.dispatch.factories import RouteFactory, RouteStopFactory
 from apps.fleet.factories import (
     DriverDocumentFactory,
     DriverFactory,
@@ -116,6 +117,18 @@ def _vehicle_document_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return kwargs, [str(document.public_id), document.number, document.upload.object_key]
 
 
+def _route_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    route = RouteFactory.create(branch__company=company)
+    return {"public_id": route.public_id}, [str(route.public_id)]
+
+
+def _route_stop_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    stop = RouteStopFactory.create(route__branch__company=company)
+    kwargs = {"route_id": stop.route.public_id, "public_id": stop.public_id}
+    secrets = [str(stop.public_id), stop.shipment.tracking_number, str(stop.shipment.public_id)]
+    return kwargs, secrets
+
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
@@ -146,6 +159,11 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "vehicle-document-detail": _vehicle_document_in,
     "vehicle-document-archive": _vehicle_document_in,
     "vehicle-document-download": _vehicle_document_in,
+    "route-detail": _route_in,
+    "route-stops": _route_in,
+    "route-reorder": _route_in,
+    "route-cancel": _route_in,
+    "route-stop-detail": _route_stop_in,
 }
 
 # Routes that are public by design: the path segment is a bearer credential, not a
@@ -160,6 +178,7 @@ LIST_ROUTES: dict[str, ObjectFactory] = {
     "shipment-list": _shipment_in,
     "driver-list": _driver_in,
     "vehicle-list": _vehicle_in,
+    "route-list": _route_stop_in,
 }
 
 # Valid for users, customers and addresses alike, so each route reaches its object lookup.

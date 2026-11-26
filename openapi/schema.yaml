@@ -1646,6 +1646,505 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/routes/:
+    get:
+      operationId: routes_list
+      description: |-
+        List routes (`dispatch.view`) or create a planned one (`dispatch.manage`). Users see
+        routes of their own branches unless they hold `dispatch.all_branches`.
+      parameters:
+      - in: query
+        name: branch
+        schema:
+          type: string
+          format: uuid
+        description: Branch public ID.
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: route_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          enum:
+          - planned
+          - assigned
+          - loading
+          - dispatched
+          - in_progress
+          - completed
+          - cancelled
+          type: string
+          minLength: 1
+        description: |-
+          * `planned` - Planned
+          * `assigned` - Assigned
+          * `loading` - Loading
+          * `dispatched` - Dispatched
+          * `in_progress` - In progress
+          * `completed` - Completed
+          * `cancelled` - Cancelled
+      tags:
+      - routes
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedRouteList'
+          description: ''
+    post:
+      operationId: routes_create
+      description: |-
+        List routes (`dispatch.view`) or create a planned one (`dispatch.manage`). Users see
+        routes of their own branches unless they hold `dispatch.all_branches`.
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/:
+    get:
+      operationId: routes_retrieve
+      description: |-
+        Read a route with its stops (`dispatch.view`), or change its date or sequencing
+        flag while it is planned (`dispatch.manage`). Changes need the route's current
+        `version`; a stale one is 409 `route.version_conflict`.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    patch:
+      operationId: routes_partial_update
+      description: |-
+        Read a route with its stops (`dispatch.view`), or change its date or sequencing
+        flag while it is planned (`dispatch.manage`). Changes need the route's current
+        `version`; a stale one is 409 `route.version_conflict`.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedRouteUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/cancel/:
+    post:
+      operationId: routes_cancel_create
+      description: |-
+        Cancel a route (`dispatch.manage`); its shipments return to their status before it.
+        409 `route.stops_started` once a stop has been worked.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteVersion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/reorder/:
+    post:
+      operationId: routes_reorder_create
+      description: |-
+        Set the stop order (`dispatch.manage`): every stop exactly once, a pickup before its
+        delivery. Returns the updated route.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reorder'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/stops/:
+    post:
+      operationId: routes_stops_create
+      description: |-
+        Append a pickup or delivery stop (`dispatch.manage`). A shipment's first stop moves
+        it to `assigned`. Returns the updated route.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StopAdd'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{route_id}/stops/{public_id}/:
+    delete:
+      operationId: routes_stops_destroy
+      description: |-
+        Remove a stop (`dispatch.manage`); `version` is a query parameter. When it was the
+        shipment's last stop, the shipment returns to its status before the route.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: route_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: query
+        name: version
+        schema:
+          type: integer
+          minimum: 1
+        description: The route's `version` as the client last saw it.
+        required: true
+      tags:
+      - routes
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/shipments/:
     get:
       operationId: shipments_list
@@ -4153,6 +4652,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Leave'
+    PaginatedRouteList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Route'
     PaginatedShipmentListList:
       type: object
       required:
@@ -4364,6 +4882,18 @@ components:
           type: string
           pattern: ^\+[1-9]\d{1,14}$
           maxLength: 16
+    PatchedRouteUpdate:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The route's `version` as the client last saw it.
+        route_date:
+          type: string
+          format: date
+        sequence_enforced:
+          type: boolean
     PatchedShipmentWrite:
       type: object
       description: |-
@@ -4517,6 +5047,23 @@ components:
           type: string
       required:
       - refresh
+    Reorder:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The route's `version` as the client last saw it.
+        stop_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Every stop of the route exactly once, in the new order.
+          maxItems: 300
+      required:
+      - stop_ids
+      - version
     RolesEnum:
       enum:
       - owner
@@ -4541,6 +5088,240 @@ components:
         * `customer_service` - Customer service
         * `driver` - Driver
         * `viewer` - Viewer
+    Route:
+      type: object
+      description: |-
+        A route row. It must come from `selectors.routes_for_user`, which carries
+        `stop_count`.
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        route_date:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RouteStatusEnum'
+          readOnly: true
+        sequence_enforced:
+          type: boolean
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+        stop_count:
+          type: integer
+          readOnly: true
+        cancelled_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - branch
+      - cancelled_at
+      - created_at
+      - public_id
+      - route_date
+      - sequence_enforced
+      - status
+      - stop_count
+      - updated_at
+      - version
+    RouteCreate:
+      type: object
+      properties:
+        branch_id:
+          type: string
+          format: uuid
+        route_date:
+          type: string
+          format: date
+          description: Today or later, in the company timezone.
+        sequence_enforced:
+          type: boolean
+          default: true
+      required:
+      - branch_id
+      - route_date
+    RouteDetail:
+      type: object
+      description: |-
+        A route row. It must come from `selectors.routes_for_user`, which carries
+        `stop_count`.
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        route_date:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RouteStatusEnum'
+          readOnly: true
+        sequence_enforced:
+          type: boolean
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+        stop_count:
+          type: integer
+          readOnly: true
+        cancelled_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        stops:
+          type: array
+          items:
+            $ref: '#/components/schemas/RouteStop'
+          readOnly: true
+      required:
+      - branch
+      - cancelled_at
+      - created_at
+      - public_id
+      - route_date
+      - sequence_enforced
+      - status
+      - stop_count
+      - stops
+      - updated_at
+      - version
+    RouteStatusEnum:
+      enum:
+      - planned
+      - assigned
+      - loading
+      - dispatched
+      - in_progress
+      - completed
+      - cancelled
+      type: string
+      description: |-
+        * `planned` - Planned
+        * `assigned` - Assigned
+        * `loading` - Loading
+        * `dispatched` - Dispatched
+        * `in_progress` - In progress
+        * `completed` - Completed
+        * `cancelled` - Cancelled
+    RouteStop:
+      type: object
+      description: |-
+        A stop, from `selectors.stops_with_details` (which carries `has_location` and the
+        prefetched addresses).
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        type:
+          allOf:
+          - $ref: '#/components/schemas/RouteStopTypeEnum'
+          readOnly: true
+        sequence:
+          type: integer
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RouteStopStatusEnum'
+          readOnly: true
+        window_start:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        window_end:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        has_location:
+          type: boolean
+          readOnly: true
+          description: Whether the stop's address has coordinates.
+        shipment:
+          allOf:
+          - $ref: '#/components/schemas/StopShipment'
+          readOnly: true
+        address:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentAddress'
+          readOnly: true
+      required:
+      - address
+      - has_location
+      - public_id
+      - sequence
+      - shipment
+      - status
+      - type
+      - window_end
+      - window_start
+    RouteStopStatusEnum:
+      enum:
+      - pending
+      - arrived
+      - completed
+      - failed
+      - skipped
+      type: string
+      description: |-
+        * `pending` - Pending
+        * `arrived` - Arrived
+        * `completed` - Completed
+        * `failed` - Failed
+        * `skipped` - Skipped
+    RouteStopTypeEnum:
+      enum:
+      - pickup
+      - delivery
+      type: string
+      description: |-
+        * `pickup` - Pickup
+        * `delivery` - Delivery
+    RouteVersion:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The route's `version` as the client last saw it.
+      required:
+      - version
     Shift:
       type: object
       properties:
@@ -4890,6 +5671,54 @@ components:
         * `returning` - Returning
         * `returned_to_sender` - Returned to sender
         * `cancelled` - Cancelled
+    StopAdd:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The route's `version` as the client last saw it.
+        shipment_id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/RouteStopTypeEnum'
+        window_start:
+          type: string
+          format: date-time
+          nullable: true
+        window_end:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - shipment_id
+      - type
+      - version
+    StopShipment:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        tracking_number:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/ShipmentStatusEnum'
+          readOnly: true
+        total_weight_kg:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,6}(?:\.\d{0,3})?$
+          readOnly: true
+      required:
+      - public_id
+      - status
+      - total_weight_kg
+      - tracking_number
     TokenPair:
       type: object
       properties:

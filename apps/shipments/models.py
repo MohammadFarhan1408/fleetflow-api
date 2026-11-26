@@ -33,7 +33,7 @@ ALLOWED_TRANSITIONS: dict[ShipmentStatus, frozenset[ShipmentStatus]] = {
     _S.CREATED: frozenset({_S.RECEIVED_AT_WAREHOUSE, _S.ASSIGNED, _S.CANCELLED}),
     _S.RECEIVED_AT_WAREHOUSE: frozenset({_S.SORTED}),
     _S.SORTED: frozenset({_S.ASSIGNED, _S.CANCELLED}),
-    _S.ASSIGNED: frozenset({_S.LOADED, _S.OUT_FOR_DELIVERY, _S.CANCELLED}),
+    _S.ASSIGNED: frozenset({_S.LOADED, _S.OUT_FOR_DELIVERY, _S.CANCELLED, _S.CREATED, _S.SORTED}),
     _S.LOADED: frozenset({_S.OUT_FOR_DELIVERY}),
     _S.OUT_FOR_DELIVERY: frozenset({_S.DELIVERED, _S.DELIVERY_FAILED}),
     _S.DELIVERED: frozenset(),
@@ -42,6 +42,14 @@ ALLOWED_TRANSITIONS: dict[ShipmentStatus, frozenset[ShipmentStatus]] = {
     _S.RETURNED_TO_SENDER: frozenset(),
     _S.CANCELLED: frozenset({_S.CREATED}),
 }
+
+# Edges only a service may take, with `authorized_by_caller`; the transitions API answers
+# them 409. `assigned` always means "on a route" (Phase 4): the return edges are taken by
+# dispatch when a stop is removed or a route is unassigned or cancelled, and a dispatcher
+# removes the stop before the shipment can be cancelled (memory D-API-29).
+SERVICE_ONLY_EDGES: frozenset[tuple[ShipmentStatus, ShipmentStatus]] = frozenset(
+    {(_S.ASSIGNED, _S.CREATED), (_S.ASSIGNED, _S.SORTED), (_S.ASSIGNED, _S.CANCELLED)}
+)
 
 
 class ShipmentPriority(models.TextChoices):

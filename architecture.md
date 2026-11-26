@@ -252,6 +252,11 @@ Principles:
   - **Times:** the app queues these offline, so the body may carry the device's `occurred_at` (default: now). It may be at most 5 minutes in the future and 24 hours in the past, a start must not be before the driver's previous shift ended, and an end must be after its start; otherwise 400 `validation.invalid`. The server's receipt time is stored too (`*_recorded_at`).
   - **Rules:** a suspended driver cannot start (409 `driver.suspended`); leave and document gaps do not block a shift (assignment checks them, Phase 4); a suspended driver can still end an open shift. A second open shift is 409 `shift.already_open`, ending without one 409 `shift.not_open`. Starts and ends lock the driver's row, so they are serialized per driver.
   - **Own profile:** `GET /me/driver/` returns the signed-in driver's profile, today's availability and the open shift (`active_shift`). Own-profile reads are not branch-scoped. `selectors.active_shift(driver)` is what Phase 7 ping ingestion will call.
+- **Routes (Phase 4 PR 1, memory D-API-30)**: `Route` (branch, `route_date`, `status`, `sequence_enforced`, `version`, `cancelled_at`) and `RouteStop` (route, shipment, `type` `pickup|delivery`, `sequence`, `status`, optional time window, and `shipment_status_before`). DB constraints: `UNIQUE(route, sequence)` (deferrable, so one transaction can renumber), `UNIQUE(route, shipment, type)`, a valid window (both ends or neither, end after start), `sequence >= 1`, and `cancelled_at` set exactly when the route is `cancelled`. `loading` and the later stop statuses are in the enums for the contract but unreachable until Phases 5 and 6. Driver and vehicle columns arrive with assignment (PR 2).
+  - **Versioning:** every change checks the caller's `version` under a row lock on the route and bumps it (409 `route.version_conflict`), so two dispatchers cannot overwrite each other; concurrent edits and concurrent adds of one shipment have exactly one winner (tested with threads). Because the route lock serializes edits, no IntegrityError mapping is needed.
+  - **Stops and shipment status:** adding a shipment's first stop moves it `created|sorted → assigned` through `shipments.services.transition`; `shipment_status_before` records where to return (§11, §13). A sorted shipment takes a delivery only; a created one needs its pickup on the route before its delivery; the whole stop set is revalidated after every add, remove and reorder, inside the transaction, so a violation rolls everything back (including the shipment's status).
+  - **Editing:** stops can change while a route is `planned` or `assigned`; the date and sequencing flag only while `planned`; a route can be cancelled while `planned`, `assigned` or `dispatched` (not once a stop was worked). Cancelled routes keep their stops as history.
+  - **Reads:** the route detail returns its stops with their shipment summary and address in a constant number of queries (annotation for `has_location`, prefetch for addresses); lists annotate `stop_count`. Stop addresses carry the recipient's contact, as the shipment API does for `shipments.view`; every `dispatch.view` role also holds `shipments.view`.
 - **Migrations**: one migration per PR per app where possible. No edits to applied migrations. Data migrations are separate from schema migrations. Large tables follow expand → backfill (Celery, batched) → contract. CI runs `makemigrations --check`.
 
 ## 11. Shipment lifecycle
@@ -278,7 +283,9 @@ stateDiagram-v2
   returning --> returned_to_sender : RTS completed
   created --> cancelled
   sorted --> cancelled
-  assigned --> cancelled : removes stop
+  assigned --> cancelled : stop removed first (service-only)
+  assigned --> created : stop removed or route cancelled (service-only)
+  assigned --> sorted : stop removed or route cancelled (service-only)
   delivery_failed --> cancelled
   cancelled --> created : recovery (ops_manager, audited)
   delivered --> [*]
@@ -291,7 +298,7 @@ Rules:
 - Transitions happen **only** through `shipments.services.transition(shipment, to, actor, reason, idempotency_key)`. That function checks the transition table, the actor's permission and the preconditions (e.g. `loaded` requires a loading scan, `delivered` requires an accepted POD).
 - `delivered` is terminal. Corrections use `admin_correction` (permission `shipments.correct_status`, mandatory reason, audited), which appends a correction event and never rewrites history.
 - `cancelled → created` recovery is permitted only through the recovery workflow, never directly to `delivered`.
-- **Planned for Phase 4 PR 1 (owner-approved 2026-11-26, D-API-29)**: two service-level edges `assigned → created` and `assigned → sorted` return a shipment to its pre-route status when its stop is removed or its route is unassigned or cancelled. They are not exposed as API transitions, the enum is unchanged, and the diagram above gains them with that PR.
+- **Implemented (Phase 4 PR 1, owner-approved 2026-11-26, D-API-29, D-API-30)**: `assigned` means "on a route". The edges `assigned → created` and `assigned → sorted` return a shipment to its pre-route status when its last stop is removed or its route is cancelled, and `assigned → cancelled` stays in the table. All three are in `SERVICE_ONLY_EDGES`: only a service passing `authorized_by_caller` may take them, and the transitions API answers 409 `shipment.invalid_transition`. So a dispatcher removes a shipment's stop before it can be cancelled, and a stop can never hold a cancelled shipment (shipments cannot import dispatch, §5). The enum is unchanged.
 - Concurrency: `select_for_update()` on the shipment row inside the transaction, plus an `expected_status` precondition. On mismatch → 409 `shipment.status_conflict`.
 - Repeating the same transition with the same idempotency key → returns the original result. Without a key, a transition to the current status → 409, so no duplicate event is created.
 

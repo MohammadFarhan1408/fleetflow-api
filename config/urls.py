@@ -12,6 +12,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("api/v1/", include("apps.uploads.urls")),
     path("api/v1/", include("apps.fleet.urls")),
     path("api/v1/", include("apps.shipments.urls")),
+    path("api/v1/", include("apps.dispatch.urls")),
 ]
 
 if settings.API_DOCS_ENABLED:

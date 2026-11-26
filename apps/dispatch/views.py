@@ -1,0 +1,183 @@
+import uuid
+
+from django.db.models import QuerySet
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
+from rest_framework import status
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from apps.accounts.authentication import current_user
+from apps.accounts.permissions import HasRequiredPermission
+from apps.core.idempotency import idempotent
+from apps.core.serializers import ErrorSerializer
+from apps.dispatch import selectors, services
+from apps.dispatch.models import Route
+from apps.dispatch.permissions import DISPATCH_MANAGE, DISPATCH_VIEW
+from apps.dispatch.serializers import (
+    ReorderSerializer,
+    RouteCreateSerializer,
+    RouteDetailSerializer,
+    RouteListQuerySerializer,
+    RouteSerializer,
+    RouteUpdateSerializer,
+    RouteVersionSerializer,
+    StopAddSerializer,
+)
+
+ERROR = OpenApiResponse(ErrorSerializer)
+READ_ERRORS = {401: ERROR, 403: ERROR, 404: ERROR}
+WRITE_ERRORS = {400: ERROR, 401: ERROR, 403: ERROR, 404: ERROR, 409: ERROR, 422: ERROR}
+
+
+class DispatchAccess(APIView):
+    # Reads need dispatch.view; every write needs dispatch.manage. Company and branch scope
+    # are applied by the selectors and re-checked by the services.
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {
+        "GET": DISPATCH_VIEW,
+        "POST": DISPATCH_MANAGE,
+        "PATCH": DISPATCH_MANAGE,
+        "DELETE": DISPATCH_MANAGE,
+    }
+
+
+def _route_response(request: Request, route: Route, *, http_status: int = 200) -> Response:
+    """The route as it is now, with its stops and new `version` (re-read, so it carries
+    the annotations and prefetched stops)."""
+    fresh = selectors.get_route(current_user(request), route.public_id)
+    return Response(RouteDetailSerializer(fresh).data, status=http_status)
+
+
+@extend_schema_view(get=extend_schema(parameters=[RouteListQuerySerializer]))
+class RouteListCreateView(DispatchAccess, ListAPIView[Route]):
+    """List routes (`dispatch.view`) or create a planned one (`dispatch.manage`). Users see
+    routes of their own branches unless they hold `dispatch.all_branches`."""
+
+    serializer_class = RouteSerializer
+
+    def get_queryset(self) -> QuerySet[Route]:
+        query = RouteListQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        return selectors.list_routes(current_user(self.request), **query.validated_data)
+
+    @extend_schema(
+        request=RouteCreateSerializer, responses={201: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request) -> Response:
+        serializer = RouteCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        route = services.create_route(
+            actor=current_user(request), request=request, **serializer.validated_data
+        )
+        return _route_response(request, route, http_status=status.HTTP_201_CREATED)
+
+
+class RouteDetailView(DispatchAccess):
+    """Read a route with its stops (`dispatch.view`), or change its date or sequencing
+    flag while it is planned (`dispatch.manage`). Changes need the route's current
+    `version`; a stale one is 409 `route.version_conflict`."""
+
+    @extend_schema(responses={200: RouteDetailSerializer, **READ_ERRORS})
+    def get(self, request: Request, public_id: uuid.UUID) -> Response:
+        return Response(
+            RouteDetailSerializer(selectors.get_route(current_user(request), public_id)).data
+        )
+
+    @extend_schema(
+        request=RouteUpdateSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def patch(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = RouteUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = dict(serializer.validated_data)
+        route = services.update_route(
+            actor=actor,
+            route=route,
+            version=data["version"],
+            route_date=data.get("route_date"),
+            sequence_enforced=data.get("sequence_enforced"),
+        )
+        return _route_response(request, route)
+
+
+class RouteStopsView(DispatchAccess):
+    """Append a pickup or delivery stop (`dispatch.manage`). A shipment's first stop moves
+    it to `assigned`. Returns the updated route."""
+
+    @extend_schema(
+        request=StopAddSerializer, responses={201: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = StopAddSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.add_stop(actor=actor, route=route, request=request, **serializer.validated_data)
+        return _route_response(request, route, http_status=status.HTTP_201_CREATED)
+
+
+class RouteStopDetailView(DispatchAccess):
+    """Remove a stop (`dispatch.manage`); `version` is a query parameter. When it was the
+    shipment's last stop, the shipment returns to its status before the route."""
+
+    @extend_schema(
+        parameters=[RouteVersionSerializer], responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    def delete(self, request: Request, route_id: uuid.UUID, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, route_id)
+        stop = selectors.get_stop(route, public_id)
+        query = RouteVersionSerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        services.remove_stop(
+            actor=actor,
+            route=route,
+            stop=stop,
+            version=query.validated_data["version"],
+            request=request,
+        )
+        return _route_response(request, route)
+
+
+class RouteReorderView(DispatchAccess):
+    """Set the stop order (`dispatch.manage`): every stop exactly once, a pickup before its
+    delivery. Returns the updated route."""
+
+    @extend_schema(
+        request=ReorderSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = ReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.reorder_stops(actor=actor, route=route, **serializer.validated_data)
+        return _route_response(request, route)
+
+
+class RouteCancelView(DispatchAccess):
+    """Cancel a route (`dispatch.manage`); its shipments return to their status before it.
+    409 `route.stops_started` once a stop has been worked."""
+
+    @extend_schema(
+        request=RouteVersionSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = RouteVersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.cancel_route(
+            actor=actor, route=route, version=serializer.validated_data["version"], request=request
+        )
+        return _route_response(request, route)

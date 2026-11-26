@@ -24,6 +24,7 @@ from apps.shipments import selectors
 from apps.shipments.constants import MAX_TOTAL_WEIGHT_KG
 from apps.shipments.models import (
     ALLOWED_TRANSITIONS,
+    SERVICE_ONLY_EDGES,
     AddressRole,
     BranchTrackingSequence,
     EventSource,
@@ -177,7 +178,7 @@ EDGE_PERMISSIONS: dict[tuple[ShipmentStatus, ShipmentStatus], str] = {
     **{
         (origin, _S.CANCELLED): SHIPMENTS_CANCEL
         for origin, targets in ALLOWED_TRANSITIONS.items()
-        if _S.CANCELLED in targets
+        if _S.CANCELLED in targets and (origin, _S.CANCELLED) not in SERVICE_ONLY_EDGES
     },
 }
 
@@ -201,6 +202,8 @@ def transition(
     shipment = _lock_visible(actor, shipment)
     current = _check_expected(shipment, expected_status)
     if to not in ALLOWED_TRANSITIONS[current]:
+        raise DomainError(ErrorCode.SHIPMENT_INVALID_TRANSITION)
+    if (current, to) in SERVICE_ONLY_EDGES and not authorized_by_caller:
         raise DomainError(ErrorCode.SHIPMENT_INVALID_TRANSITION)
     permission = EDGE_PERMISSIONS.get((current, to))
     if permission is None:
