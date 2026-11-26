@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "apps.uploads",
     "apps.fleet",
     "apps.shipments",
+    "apps.dispatch",
 ]
 
 AUTH_USER_MODEL = "accounts.User"
@@ -181,6 +182,9 @@ SPECTACULAR_SETTINGS = {
         "VehicleUnavailableReasonEnum": "apps.fleet.models.VehicleUnavailableReason",
         "DriverDocumentTypeEnum": "apps.fleet.models.DriverDocumentType",
         "VehicleDocumentTypeEnum": "apps.fleet.models.VehicleDocumentType",
+        "RouteStatusEnum": "apps.dispatch.models.RouteStatus",
+        "RouteStopTypeEnum": "apps.dispatch.models.StopType",
+        "RouteStopStatusEnum": "apps.dispatch.models.StopStatus",
         "UploadPurposeEnum": "apps.uploads.models.UploadPurpose",
         "UploadContentTypeEnum": "apps.uploads.models.UploadContentType",
         "UploadStatusEnum": "apps.uploads.models.UploadStatus",

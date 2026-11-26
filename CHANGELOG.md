@@ -4,6 +4,29 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: routes and stops (Phase 4 PR 1)
+
+Dispatchers plan routes and add shipments to them. Driver and vehicle assignment, dispatch and the driver's own routes follow in PRs 2 and 3.
+
+- **Permissions in `/me`:** `dispatch.view` (owner, admin, ops_manager, dispatcher, fleet_manager, customer_service, viewer), `dispatch.manage` (owner, admin, ops_manager, dispatcher) and `dispatch.all_branches` (owner, admin, ops_manager). Without `dispatch.all_branches`, users see and change only routes of their own branches; another branch's answers 404.
+- **Routes.** `GET|POST /api/v1/routes/`, `GET|PATCH /api/v1/routes/{id}/`.
+  - Create `{branch_id, route_date, sequence_enforced?}` (`Idempotency-Key` optional). `route_date` is today (company timezone) or later, else 400. `sequence_enforced` defaults to true. `branch_id` must be one of the caller's branches, else 400 `validation.invalid_reference`.
+  - Row: `public_id`, `branch{public_id,code,name}`, `route_date`, `status`, `sequence_enforced`, **`version`**, `stop_count`, `cancelled_at`, `created_at`, `updated_at`. The detail adds `stops[]`, ordered by `sequence`.
+  - List filters: `route_date`, `branch`, `status`. Cursor-paginated.
+  - `PATCH {version, route_date?, sequence_enforced?}`: only while the route is `planned` (else 409 `route.invalid_status`); at least one field.
+- **Stops.** A stop is one shipment's pickup or delivery. Row: `public_id`, `type` (`pickup`, `delivery`), `sequence` (1, 2, …), `status` (`pending`; the delivery workflow adds the rest), `window_start`, `window_end` (both or neither), `has_location` (whether the stop's address has coordinates; routing accepts stops without), `shipment{public_id,tracking_number,status,total_weight_kg}` and `address` (the shipment's pickup or delivery address).
+  - `POST /api/v1/routes/{id}/stops/` `{version, shipment_id, type, window_start?, window_end?}` → `201`, appended last.
+  - `DELETE /api/v1/routes/{id}/stops/{stop_id}/?version=N` → `200`; the later stops move up.
+  - `POST /api/v1/routes/{id}/reorder/` `{version, stop_ids[]}`: every stop exactly once, in the new order.
+  - `POST /api/v1/routes/{id}/cancel/` `{version}`.
+  - All four return the updated route (with its new `version` and `stops`). They work while the route is `planned` or `assigned`; otherwise 409 `route.invalid_status`.
+- **`version` (optimistic concurrency).** Send the `version` you last read. Every change bumps it by one. A stale one is 409 `route.version_conflict`: reload the route and retry.
+- **Shipment rules.** The shipment must be visible to the caller and belong to the route's branch (else 400). A `sorted` shipment takes a delivery stop only (a pickup is 409 `route.shipment_unavailable`). A `created` shipment, not yet picked up, needs its pickup stop on the route before its delivery. Any other status, or a shipment already on a route, is 409 `route.shipment_unavailable`. A pickup must come before its delivery (400 `route.pickup_dependency`, also when reordering or removing). The same stop twice is 400 `route.duplicate_stop`; at most 300 stops (400 `route.too_many_stops`); a reorder that does not list each stop once is 400 `route.invalid_sequence`.
+- **Shipment status follows the route.** A shipment's first stop moves it `created|sorted → assigned` (a `status_change` event with reason "Added to a route"). Removing its last stop, or cancelling the route, returns it to the status it had before (reason "Removed from route" or "Route cancelled"). Cancelling works while the route is `planned`, `assigned` or `dispatched` and is 409 `route.stops_started` once a stop was worked; the cancelled route keeps its stops.
+- **Shipments API change (architecture §11, owner-approved 2026-11-26).** `assigned` now means "on a route". The edges `assigned → created` and `assigned → sorted` exist for dispatch only; `POST /shipments/{id}/transitions/` can not take them. **Cancelling an `assigned` shipment through that endpoint is now 409 `shipment.invalid_transition`**: remove its stop first, then cancel. No shipment could be `assigned` through the API before this change.
+- **Enums:** `RouteStatusEnum` (`planned`, `assigned`, `loading`, `dispatched`, `in_progress`, `completed`, `cancelled`; only `planned`, `assigned` and `cancelled` are reachable for now), `RouteStopTypeEnum`, `RouteStopStatusEnum`.
+- **New error codes:** `route.version_conflict`, `route.invalid_status`, `route.shipment_unavailable`, `route.stops_started` (409); `route.duplicate_stop`, `route.invalid_sequence`, `route.pickup_dependency`, `route.too_many_stops` (400).
+
 ### api-additive: driver profile and shifts (Phase 3 PR 4)
 
 For the driver app. All three endpoints need the `driver` role (permission `shifts.manage_own`, added to `/me` for that role only); other roles get 403 `permission.denied`.

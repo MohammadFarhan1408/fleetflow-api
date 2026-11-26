@@ -71,6 +71,14 @@ class ErrorCode(StrEnum):
     DRIVER_SUSPENDED = "driver.suspended"
     SHIFT_ALREADY_OPEN = "shift.already_open"
     SHIFT_NOT_OPEN = "shift.not_open"
+    ROUTE_VERSION_CONFLICT = "route.version_conflict"
+    ROUTE_INVALID_STATUS = "route.invalid_status"
+    ROUTE_SHIPMENT_UNAVAILABLE = "route.shipment_unavailable"
+    ROUTE_STOPS_STARTED = "route.stops_started"
+    ROUTE_DUPLICATE_STOP = "route.duplicate_stop"
+    ROUTE_INVALID_SEQUENCE = "route.invalid_sequence"
+    ROUTE_PICKUP_DEPENDENCY = "route.pickup_dependency"
+    ROUTE_TOO_MANY_STOPS = "route.too_many_stops"
     VEHICLE_ARCHIVED = "vehicle.archived"
     VEHICLE_DUPLICATE_REGISTRATION = "vehicle.duplicate_registration"
     UPLOAD_TOO_LARGE = "upload.too_large"
@@ -183,6 +191,30 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.DRIVER_SUSPENDED: ErrorSpec(409, ErrorType.CONFLICT, "The driver is suspended"),
     ErrorCode.SHIFT_ALREADY_OPEN: ErrorSpec(409, ErrorType.CONFLICT, "A shift is already open"),
     ErrorCode.SHIFT_NOT_OPEN: ErrorSpec(409, ErrorType.CONFLICT, "There is no open shift"),
+    ErrorCode.ROUTE_VERSION_CONFLICT: ErrorSpec(
+        409, ErrorType.CONFLICT, "The route has changed; reload and retry"
+    ),
+    ErrorCode.ROUTE_INVALID_STATUS: ErrorSpec(
+        409, ErrorType.CONFLICT, "The route's status does not allow this"
+    ),
+    ErrorCode.ROUTE_SHIPMENT_UNAVAILABLE: ErrorSpec(
+        409, ErrorType.CONFLICT, "The shipment cannot be added to a route"
+    ),
+    ErrorCode.ROUTE_STOPS_STARTED: ErrorSpec(
+        409, ErrorType.CONFLICT, "The route has stops that were already worked"
+    ),
+    ErrorCode.ROUTE_DUPLICATE_STOP: ErrorSpec(
+        400, ErrorType.VALIDATION, "The shipment already has this stop on the route"
+    ),
+    ErrorCode.ROUTE_INVALID_SEQUENCE: ErrorSpec(
+        400, ErrorType.VALIDATION, "The stop order must list every stop exactly once"
+    ),
+    ErrorCode.ROUTE_PICKUP_DEPENDENCY: ErrorSpec(
+        400, ErrorType.VALIDATION, "A delivery must come after its pickup"
+    ),
+    ErrorCode.ROUTE_TOO_MANY_STOPS: ErrorSpec(
+        400, ErrorType.VALIDATION, "The route has the most stops it can hold"
+    ),
     ErrorCode.VEHICLE_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Vehicle is archived"),
     ErrorCode.VEHICLE_DUPLICATE_REGISTRATION: ErrorSpec(
         409, ErrorType.CONFLICT, "Registration number already in use"

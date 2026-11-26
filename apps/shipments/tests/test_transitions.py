@@ -122,6 +122,50 @@ def test_unmapped_edges_are_denied_unless_the_caller_authorized_them(
     assert not TrackingEvent.objects.exists()
 
 
+def test_the_route_return_edges_are_service_only(owner: User, branch: Branch) -> None:
+    for target in (S.CREATED, S.SORTED, S.CANCELLED):
+        shipment = ShipmentFactory.create(branch=branch, status=S.ASSIGNED)
+
+        with pytest.raises(DomainError) as exc:  # not authorized_by_caller: what an API call is
+            services.transition(
+                actor=owner,
+                shipment=shipment,
+                to=target,
+                expected_status=S.ASSIGNED,
+                reason="x",
+                request=RequestFactory().post("/"),
+            )
+
+        assert exc.value.error_code == ErrorCode.SHIPMENT_INVALID_TRANSITION
+        shipment.refresh_from_db()
+        assert shipment.status == S.ASSIGNED
+        assert not TrackingEvent.objects.filter(shipment=shipment).exists()
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        ("created", (409, "shipment.invalid_transition")),
+        ("cancelled", (409, "shipment.invalid_transition")),
+        ("sorted", (400, "validation.invalid")),  # not even an API target
+    ],
+)
+def test_an_assigned_shipment_cannot_leave_its_route_through_the_api(
+    client: APIClient, branch: Branch, target: str, expected: tuple[int, str]
+) -> None:
+    shipment = ShipmentFactory.create(branch=branch, status=S.ASSIGNED)
+
+    response = client.post(
+        transition_url(shipment.public_id),
+        {"to": target, "expected_status": "assigned", "reason": "x"},
+        format="json",
+    )
+
+    assert error(response) == expected
+    shipment.refresh_from_db()
+    assert shipment.status == S.ASSIGNED
+
+
 # --- API: confirm, cancel, recover ------------------------------------------------------
 
 

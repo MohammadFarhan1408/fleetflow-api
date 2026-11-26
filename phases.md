@@ -110,7 +110,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 - **Status**: IN PROGRESS (plan approved by the owner 2026-11-26; decisions D-API-29)
 - **Approved delivery plan (4 PRs, merged in order; new app `apps/dispatch`):**
-  1. **`feature/api-routes`**
+  1. **`feature/api-routes`** (pushed for review, decisions D-API-30)
      - `Route` (branch, `route_date`, nullable driver and vehicle, `sequence_enforced`, `version`, status `planned → assigned → loading → dispatched → in_progress → completed | cancelled`; `loading` unused until Phase 6) and `RouteStop` (one shipment per stop, `pickup` or `delivery`, `sequence`, optional time window, `has_location`; `UNIQUE(route, sequence)` deferrable, `UNIQUE(route, shipment, type)`).
      - List/create/detail/update, add and remove stop, reorder and cancel, with `version` on every change (409 `route.version_conflict`). Pickup-before-delivery, duplicate-stop and sequence rules, at most 300 stops.
      - Shipment status follows the stops: `created|sorted → assigned` on the first stop; back to the previous status on removal or cancellation. This adds the service-level edges `assigned → created` and `assigned → sorted` to the §11 table (owner-approved; the enum is unchanged; CHANGELOG entry).
