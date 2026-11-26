@@ -291,6 +291,7 @@ Rules:
 - Transitions happen **only** through `shipments.services.transition(shipment, to, actor, reason, idempotency_key)`. That function checks the transition table, the actor's permission and the preconditions (e.g. `loaded` requires a loading scan, `delivered` requires an accepted POD).
 - `delivered` is terminal. Corrections use `admin_correction` (permission `shipments.correct_status`, mandatory reason, audited), which appends a correction event and never rewrites history.
 - `cancelled → created` recovery is permitted only through the recovery workflow, never directly to `delivered`.
+- **Planned for Phase 4 PR 1 (owner-approved 2026-11-26, D-API-29)**: two service-level edges `assigned → created` and `assigned → sorted` return a shipment to its pre-route status when its stop is removed or its route is unassigned or cancelled. They are not exposed as API transitions, the enum is unchanged, and the diagram above gains them with that PR.
 - Concurrency: `select_for_update()` on the shipment row inside the transaction, plus an `expected_status` precondition. On mismatch → 409 `shipment.status_conflict`.
 - Repeating the same transition with the same idempotency key → returns the original result. Without a key, a transition to the current status → 409, so no duplicate event is created.
 
@@ -308,6 +309,8 @@ Rules:
 - `RouteStop`: route, `sequence`, type (`pickup|delivery|return`), address, time window, linked shipments, and status (`pending → arrived → completed | failed | skipped`). `UNIQUE(route_id, sequence)`, deferrable so stops can be reordered in one transaction.
 - **Assignment rules** (service `dispatch.services.assign`): driver is active and not suspended, not on leave, has a valid unexpired license whose category covers the vehicle, and has no overlapping active route on that date; vehicle is active, not in maintenance or out of service, has unexpired registration and insurance documents, and has no overlapping route; total shipment weight and volume do not exceed vehicle capacity (hard block, with an `override_capacity` permission plus reason for soft overrides).
 - Pickup-before-delivery dependency is validated when a route contains both for the same shipment.
+- **Ungeocoded stops (owner decision, D-API-29)**: addresses have no coordinates until a geocoding provider exists (D-API-18), so a stop whose address has no location is accepted and flagged `has_location: false`; coordinates that are present but invalid are 400. The nearest-neighbour suggestion orders located stops and keeps the others, in manual order, at the end.
+- **Shipment status follows the route (owner decision, D-API-29)**: a shipment's first stop moves it `created|sorted → assigned`; removing its last stop, unassigning or cancelling the route moves it back to the status it had before the route. The §11 table gains the service-level edges `assigned → created` and `assigned → sorted` for this (Phase 4 PR 1); the enum is unchanged and no API edge is added.
 - Reassigning during `in_progress` is allowed with `dispatch.reassign_active`. Completed stops stay with the original driver, and the remaining stops move. Both drivers get notified.
 - **Optimization**: MVP uses manual sequencing plus a simple nearest-neighbour suggestion. An external optimizer (OSRM/VROOM self-hosted or a commercial API) is FUTURE and NEEDS APPROVAL. Its timeout or failure falls back to the current manual order, never blocking dispatch.
 
@@ -424,7 +427,7 @@ fleetflow-api **owns** every contract. Admin and driver-app must not invent fiel
 | Upload flow                                                                                         | §19                                                                                   |
 | Idempotency semantics                                                                               | §20                                                                                   |
 
-**Shipment status enum**: owner-approved as the shared contract at the Phase 2 checkpoint (2026-11-24), with the §11 transitions. Any change needs a CHANGELOG entry and owner approval.
+**Shipment status enum**: owner-approved as the shared contract at the Phase 2 checkpoint (2026-11-24), with the §11 transitions. Any change needs a CHANGELOG entry and owner approval. Phase 4 PR 1 adds two service-level edges (`assigned → created`, `assigned → sorted`), approved by the owner on 2026-11-26.
 
 **Changelog**: [CHANGELOG.md](CHANGELOG.md) is the contract changelog. Phase 1 added the auth endpoints, `/me`, the auth error codes and the 426 app-version rule.
 
@@ -544,7 +547,7 @@ Each row is a test case with its expected outcome. Implement per module in that 
 **Driver & vehicle assignment**
 | Scenario | Expected |
 |---|---|
-| Available driver + vehicle, capacity ok | 200, route `assigned`, both notified (outbox) |
+| Available driver + vehicle, capacity ok | 200, route `assigned` (driver and dispatcher notification via the outbox is Phase 9; deferred, D-API-29) |
 | Driver unavailable / on leave / suspended | 409 `assignment.driver_unavailable` with reason subcode |
 | Driver license expired (boundary: expires today, yesterday) | expired → 409; expires today → allowed (PROPOSED rule) |
 | Driver lacks vehicle category | 409 `assignment.license_category` |
@@ -556,7 +559,7 @@ Each row is a test case with its expected outcome. Implement per module in that 
 | Vehicle on overlapping route | 409 `assignment.vehicle_conflict` |
 | Two dispatchers assign same driver concurrently to two routes | one 200, one 409 |
 | Unassign before dispatch | 200, route back to `planned` |
-| Reassign during `in_progress` | completed stops stay; pending move; both drivers notified |
+| Reassign during `in_progress` | completed stops stay; pending move (both drivers notified via the outbox: Phase 9, deferred) |
 | Dispatcher from another branch without all-branch permission | 404/403 |
 
 **Dispatch & route operations**
@@ -568,8 +571,9 @@ Each row is a test case with its expected outcome. Implement per module in that 
 | Same shipment twice as delivery on one route | 400 `route.duplicate_stop` |
 | Delivery stop before its pickup | 400 `route.pickup_dependency` |
 | Capacity exceeded after adding stop | 409 |
-| Stop outside time window (planned ETA) | 200 with warning `time_window_risk` (warning, not block) |
-| Stop with invalid coordinates or ungeocoded address | 400 |
+| Stop outside time window (planned ETA) | 200 with warning `time_window_risk` (warning, not block). **Deferred to Phase 7** (needs the simple ETA); until then windows are stored and returned only (D-API-29) |
+| Stop with invalid coordinates | 400 |
+| Stop with an ungeocoded address (no provider yet, memory D-API-18) | 200, stop flagged `has_location: false`; the nearest-neighbour suggestion keeps it last in manual order (D-API-29) |
 | Optimizer timeout / unavailable | 200, manual order kept, `optimization: "unavailable"` |
 | Cancel route with completed stops | 409; without → 200, shipments back to `sorted` |
 | Driver starts route before dispatch | 409 `route.not_dispatched` |

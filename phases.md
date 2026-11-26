@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 3, IN PROGRESS** (4-PR plan approved 2026-11-24). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24.
+**Current phase: Phase 4, IN PROGRESS** (4-PR plan approved 2026-11-26). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24; Phase 3 COMPLETED 2026-11-26.
 
 ## Ordering and dependencies
 
@@ -85,7 +85,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 3: Drivers & Fleet
 
-- **Status**: IN PROGRESS, all 4 PRs delivered; PR 4 awaiting merge, then the owner checkpoint (plan approved 2026-11-24; decisions D-API-25 to D-API-28)
+- **Status**: COMPLETED (2026-11-26). PRs #11–#14 merged with CI green on `main` for each merge; acceptance verified at the checkpoint on `main` (`064e75a`); security reviews recorded in memory.md. Decisions D-API-25 to D-API-28.
 - **Approved delivery plan (4 PRs, merged in order):**
   1. **`feature/api-uploads`** (merged, PR #11)
      - SeaweedFS in Compose and CI, boto3 (no django-storages), `S3_*` settings, a storage check in `/health/ready`.
@@ -96,7 +96,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
   3. **`feature/api-fleet-documents`** (merged, PR #13, decisions D-API-27)
      - Driver and vehicle documents (license with categories, ID, medical, registration, insurance, inspection) attached to uploads, `expires_on` valid through its date in the company timezone, `is_expired` and `expires_before` filters.
      - License category and registration/insurance checks that Phase 4 assignment will call, 5-minute download URLs for `fleet.manage`.
-  4. **`feature/api-driver-shifts`** (pushed for review, decisions D-API-28)
+  4. **`feature/api-driver-shifts`** (merged, PR #14, decisions D-API-28)
      - `Shift` start and end with one open shift per driver, `GET /me/driver/`, `/me/shift/start|end/`, `shifts.manage_own`.
      - `driver.profile_inactive` for driver endpoints without an active profile.
 - **Goal**: an assignable fleet.
@@ -108,13 +108,26 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 4: Dispatch & Route Operations
 
-- **Status**: NOT STARTED
+- **Status**: IN PROGRESS (plan approved by the owner 2026-11-26; decisions D-API-29)
+- **Approved delivery plan (4 PRs, merged in order; new app `apps/dispatch`):**
+  1. **`feature/api-routes`**
+     - `Route` (branch, `route_date`, nullable driver and vehicle, `sequence_enforced`, `version`, status `planned → assigned → loading → dispatched → in_progress → completed | cancelled`; `loading` unused until Phase 6) and `RouteStop` (one shipment per stop, `pickup` or `delivery`, `sequence`, optional time window, `has_location`; `UNIQUE(route, sequence)` deferrable, `UNIQUE(route, shipment, type)`).
+     - List/create/detail/update, add and remove stop, reorder and cancel, with `version` on every change (409 `route.version_conflict`). Pickup-before-delivery, duplicate-stop and sequence rules, at most 300 stops.
+     - Shipment status follows the stops: `created|sorted → assigned` on the first stop; back to the previous status on removal or cancellation. This adds the service-level edges `assigned → created` and `assigned → sorted` to the §11 table (owner-approved; the enum is unchanged; CHANGELOG entry).
+     - Ungeocoded addresses are allowed and flagged `has_location: false`; invalid coordinates are 400.
+     - `dispatch.view`, `dispatch.manage`, `dispatch.all_branches` seeded.
+  2. **`feature/api-route-assignment`**
+     - `assign` and `unassign` with every §13 rule through the fleet selectors for the route date (driver and vehicle availability, licence category, registration and insurance, one active route per driver and vehicle per date, capacity by weight and volume, `dispatch.override_capacity` with a reason, audited), idempotent repeats, and a single-winner race test.
+  3. **`feature/api-dispatch`**
+     - Manifest created at dispatch (the expected set; `MANIFEST_ENFORCEMENT` off until Phase 6), `dispatch` (409 `route.empty`), the driver's `GET /me/routes/`, `GET /me/routes/{id}/` (own routes only) and `POST /me/routes/{id}/start/` (needs an open shift and a dispatched route; shipments become `out_for_delivery`), and `dispatch.reassign_active` for in-progress reassignment.
+  4. **`feature/api-route-suggest`**
+     - `suggest-order`: greedy nearest neighbour on straight-line distance, respecting pickup-before-delivery, ungeocoded stops kept last in manual order, not applied until the client reorders (`optimization: "nearest_neighbour"`).
 - **Goal**: dispatchers can build, assign and dispatch routes.
 - **Scope**: Route, RouteStop, sequencing, versioned updates, assignment service with all rules, manifest model, dispatch action, driver "my route" endpoints, nearest-neighbour suggestion, manifest enforcement flag (off until Phase 6).
 - **Dependencies**: Phases 2 and 3.
 - **Acceptance**: assignment and dispatch scenario tables pass; stale-version 409 works; driver sees only their own routes.
-- **Required tests**: architecture §26.4 Driver & vehicle assignment and Dispatch & route operations.
-- **Out of scope**: external optimizer, live tracking, POD.
+- **Required tests**: architecture §26.4 Driver & vehicle assignment and Dispatch & route operations (the notification and `time_window_risk` rows are deferred, D-API-29).
+- **Out of scope**: external optimizer, live tracking, POD, notifications (Phase 9), planned ETA and the `time_window_risk` warning (Phase 7), planned/actual distance and duration (Phase 7).
 - **Checkpoint**: publish the route/stop contract to admin and driver-app memories.
 
 ## Phase 5: Delivery Workflow
