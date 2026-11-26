@@ -17,6 +17,7 @@ urlpatterns = [
         name="auth-password-reset-confirm",
     ),
     path("me/", views.MeView.as_view(), name="me"),
+    path("branches/", views.BranchListCreateView.as_view(), name="branch-list"),
     path("users/", views.UserListCreateView.as_view(), name="user-list"),
     path("users/<uuid:public_id>/", views.UserDetailView.as_view(), name="user-detail"),
 ]

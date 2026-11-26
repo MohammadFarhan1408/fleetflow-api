@@ -6,7 +6,7 @@ from django.db.models import QuerySet
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -15,12 +15,15 @@ from apps.accounts import selectors, services
 from apps.accounts.authentication import current_user
 from apps.accounts.models import RoleCode, User
 from apps.accounts.permissions import (
+    BRANCHES_MANAGE,
     USERS_MANAGE,
     USERS_VIEW,
     HasRequiredPermission,
     get_user_permissions,
 )
 from apps.accounts.serializers import (
+    BranchCreateSerializer,
+    BranchSerializer,
     LoginSerializer,
     MeSerializer,
     PasswordResetConfirmSerializer,
@@ -39,6 +42,7 @@ from apps.accounts.throttles import (
 )
 from apps.core.idempotency import idempotent
 from apps.core.serializers import ErrorSerializer
+from apps.tenancy.models import Branch
 
 ERROR = OpenApiResponse(ErrorSerializer)
 
@@ -150,6 +154,39 @@ class MeView(APIView):
             "permissions": sorted(get_user_permissions(user)),
         }
         return Response(MeSerializer(payload).data)
+
+
+class BranchListCreateView(ListAPIView[Branch]):
+    """List the branches the caller can pick when creating drivers, vehicles, shipments or
+    routes (any signed-in user), or add one (`branches.manage`)."""
+
+    serializer_class = BranchSerializer
+    required_permissions = {"POST": BRANCHES_MANAGE}
+
+    def get_permissions(self) -> list[BasePermission]:
+        if self.request.method == "GET":
+            return [IsAuthenticated()]
+        return [IsAuthenticated(), HasRequiredPermission()]
+
+    @extend_schema(responses={200: BranchSerializer(many=True), 401: ERROR, 403: ERROR})
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        return super().get(request, *args, **kwargs)
+
+    def get_queryset(self) -> QuerySet[Branch]:
+        return selectors.branches_for_picker(current_user(self.request))
+
+    @extend_schema(
+        request=BranchCreateSerializer,
+        responses={201: BranchSerializer, 400: ERROR, 401: ERROR, 403: ERROR, 409: ERROR},
+    )
+    @idempotent
+    def post(self, request: Request) -> Response:
+        serializer = BranchCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        branch = services.create_branch(
+            actor=current_user(request), request=request, **serializer.validated_data
+        )
+        return Response(BranchSerializer(branch).data, status=status.HTTP_201_CREATED)
 
 
 class UserListCreateView(ListAPIView[User]):

@@ -11,6 +11,7 @@ from apps.accounts.models import Permission, User
 
 USERS_VIEW = "users.view"
 USERS_MANAGE = "users.manage"
+BRANCHES_MANAGE = "branches.manage"
 
 
 def get_user_permissions(user: User) -> frozenset[str]:

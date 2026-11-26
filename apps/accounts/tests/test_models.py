@@ -69,6 +69,7 @@ def test_user_for_company_is_tenant_scoped() -> None:
 
 
 USERS = {"users.view", "users.manage"}
+BRANCHES = {"branches.manage"}
 CUSTOMERS = {"customers.view", "customers.manage"}
 FLEET_VIEW = {"fleet.view"}
 FLEET_MANAGE = {"fleet.view", "fleet.manage"}
@@ -96,11 +97,27 @@ def test_all_builtin_roles_are_seeded() -> None:
         # per D-API-25; shifts per D-API-28; dispatch per D-API-29.
         (
             RoleCode.OWNER,
-            {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, *FLEET_ALL, *DISPATCH_ALL, "uploads.create"},
+            {
+                *USERS,
+                *BRANCHES,
+                *CUSTOMERS,
+                *SHIPMENTS_ALL,
+                *FLEET_ALL,
+                *DISPATCH_ALL,
+                "uploads.create",
+            },
         ),
         (
             RoleCode.ADMIN,
-            {*USERS, *CUSTOMERS, *SHIPMENTS_ALL, *FLEET_ALL, *DISPATCH_ALL, "uploads.create"},
+            {
+                *USERS,
+                *BRANCHES,
+                *CUSTOMERS,
+                *SHIPMENTS_ALL,
+                *FLEET_ALL,
+                *DISPATCH_ALL,
+                "uploads.create",
+            },
         ),
         (
             RoleCode.OPS_MANAGER,

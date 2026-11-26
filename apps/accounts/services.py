@@ -466,3 +466,24 @@ def _audit_lock(email: str, request: HttpRequest) -> None:
             object_id=str(user.public_id),
             request=request,
         )
+
+
+@transaction.atomic
+def create_branch(*, actor: User, name: str, code: str, request: HttpRequest) -> Branch:
+    """Add a branch to the actor's company. The creator is not made a member: owners and
+    admins reach every branch through `*.all_branches`."""
+    try:
+        with transaction.atomic():
+            branch = tenancy.create_branch(company=actor.company, name=name, code=code)
+    except ValidationError:  # the serializer checked the format, so only uniqueness is left
+        raise DomainError(ErrorCode.BRANCH_DUPLICATE) from None
+    audit.record(
+        AuditAction.BRANCH_CREATED,
+        company=actor.company,
+        actor=actor,
+        object_type="branch",
+        object_id=str(branch.public_id),
+        after={"code": branch.code},
+        request=request,
+    )
+    return branch

@@ -4,6 +4,13 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: branch list and create
+
+`/me` returns only the caller's own branches and no `code`, so a form could not offer a branch when creating a driver, vehicle, shipment or route.
+
+- **`GET /api/v1/branches/`** (any signed-in user, cursor-paginated): `{public_id, code, name}`. Returns the caller's own branches, or every branch of the company for a user holding any `*.all_branches` permission (owner, admin, ops_manager). Use the `public_id` as `branch_id` in those create forms; each create endpoint still checks the branch against its own scope (400 `validation.invalid_reference`).
+- **`POST /api/v1/branches/`** `{name, code}` → `201` with the branch (`Idempotency-Key` optional). Needs the new permission **`branches.manage`** (owner, admin; shown in `/me`). `code` is 2–10 letters or digits, trimmed and upper-cased (`ber1` → `BER1`); it appears in tracking numbers. A name or code already used in the company is 409 **`branch.duplicate`**; a bad format is 400 `validation.invalid`. The creator is not added as a member; owners and admins see every branch anyway. To let other users work in it, add it to their `branches` in the users API.
+
 ### api-additive: routes and stops (Phase 4 PR 1)
 
 Dispatchers plan routes and add shipments to them. Driver and vehicle assignment, dispatch and the driver's own routes follow in PRs 2 and 3.

@@ -140,6 +140,7 @@ def test_me_lists_permissions_for_owner(api_client: APIClient) -> None:
     body = bearer(api_client, access).get(ME_URL).json()
 
     assert body["permissions"] == [
+        "branches.manage",
         "customers.manage",
         "customers.view",
         "dispatch.all_branches",
