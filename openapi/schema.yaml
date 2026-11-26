@@ -1513,6 +1513,139 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/me/driver/:
+    get:
+      operationId: me_driver_retrieve
+      description: The signed-in driver's profile, today's availability and the open
+        shift.
+      tags:
+      - me
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyDriver'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/me/shift/end/:
+    post:
+      operationId: me_shift_end_create
+      description: |-
+        End the signed-in driver's open shift (409 `shift.not_open` if none). Needs an
+        `Idempotency-Key`.
+      tags:
+      - me
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftTime'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/me/shift/start/:
+    post:
+      operationId: me_shift_start_create
+      description: |-
+        Start the signed-in driver's shift. `Idempotency-Key` is required: the app queues
+        this offline and replays it. A suspended driver gets 409 `driver.suspended`; a second
+        open shift 409 `shift.already_open`.
+      tags:
+      - me
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShiftTime'
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Shift'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/shipments/:
     get:
       operationId: shipments_list
@@ -3864,6 +3997,67 @@ components:
       - email
       - full_name
       - public_id
+    MyDriver:
+      type: object
+      description: The signed-in driver's own profile, as `DriverSerializer` plus
+        the open shift.
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        user:
+          allOf:
+          - $ref: '#/components/schemas/_DriverUser'
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        phone:
+          type: string
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/DriverStatusEnum'
+          readOnly: true
+        status_reason:
+          type: string
+          readOnly: true
+        archived_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        availability:
+          allOf:
+          - $ref: '#/components/schemas/DriverAvailability'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        active_shift:
+          allOf:
+          - $ref: '#/components/schemas/Shift'
+          nullable: true
+          readOnly: true
+      required:
+      - active_shift
+      - archived_at
+      - availability
+      - branch
+      - created_at
+      - phone
+      - public_id
+      - status
+      - status_reason
+      - updated_at
+      - user
     PaginatedAddressList:
       type: object
       required:
@@ -4347,6 +4541,35 @@ components:
         * `customer_service` - Customer service
         * `driver` - Driver
         * `viewer` - Viewer
+    Shift:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+        ended_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - ended_at
+      - public_id
+      - started_at
+    ShiftTime:
+      type: object
+      properties:
+        occurred_at:
+          type: string
+          format: date-time
+          description: 'The device''s time of the event, for requests queued offline.
+            At most 5 minutes in the future and 24 hours in the past (else 400). Default:
+            now.'
     ShipmentAddress:
       type: object
       properties:

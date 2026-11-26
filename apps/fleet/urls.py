@@ -75,4 +75,7 @@ urlpatterns = [
         views.VehicleDocumentDownloadView.as_view(),
         name="vehicle-document-download",
     ),
+    path("me/driver/", views.MyDriverView.as_view(), name="me-driver"),
+    path("me/shift/start/", views.MyShiftStartView.as_view(), name="me-shift-start"),
+    path("me/shift/end/", views.MyShiftEndView.as_view(), name="me-shift-end"),
 ]

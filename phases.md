@@ -85,7 +85,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 3: Drivers & Fleet
 
-- **Status**: IN PROGRESS (plan approved by the owner 2026-11-24; decisions D-API-25)
+- **Status**: IN PROGRESS, all 4 PRs delivered; PR 4 awaiting merge, then the owner checkpoint (plan approved 2026-11-24; decisions D-API-25 to D-API-28)
 - **Approved delivery plan (4 PRs, merged in order):**
   1. **`feature/api-uploads`** (merged, PR #11)
      - SeaweedFS in Compose and CI, boto3 (no django-storages), `S3_*` settings, a storage check in `/health/ready`.
@@ -93,10 +93,10 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
   2. **`feature/api-fleet`** (merged, PR #12, decisions D-API-26)
      - `Driver` (one-to-one with a user holding the `driver` role) and `Vehicle` (home branch, license category, weight and volume capacity), suspension and out-of-service status with a reason, leave with an overlap constraint, archive.
      - Availability on a date (`available_on` filter and `availability` in responses). Branch scoping shared with shipments, `fleet.view`, `fleet.manage` and `fleet.all_branches`.
-  3. **`feature/api-fleet-documents`** (pushed for review, decisions D-API-27)
+  3. **`feature/api-fleet-documents`** (merged, PR #13, decisions D-API-27)
      - Driver and vehicle documents (license with categories, ID, medical, registration, insurance, inspection) attached to uploads, `expires_on` valid through its date in the company timezone, `is_expired` and `expires_before` filters.
      - License category and registration/insurance checks that Phase 4 assignment will call, 5-minute download URLs for `fleet.manage`.
-  4. **`feature/api-driver-shifts`**
+  4. **`feature/api-driver-shifts`** (pushed for review, decisions D-API-28)
      - `Shift` start and end with one open shift per driver, `GET /me/driver/`, `/me/shift/start|end/`, `shifts.manage_own`.
      - `driver.profile_inactive` for driver endpoints without an active profile.
 - **Goal**: an assignable fleet.

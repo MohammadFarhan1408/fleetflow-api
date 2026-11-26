@@ -20,6 +20,7 @@ from apps.fleet.models import (
     DriverUnavailableReason,
     FleetDocument,
     LicenseCategory,
+    Shift,
     Vehicle,
     VehicleDocument,
     VehicleDocumentType,
@@ -356,3 +357,38 @@ class VehicleDocumentWriteSerializer(_DocumentWriteSerializer):
 class DownloadSerializer(serializers.Serializer[Any]):
     url = serializers.URLField(help_text="Presigned GET, valid for 5 minutes.")
     expires_at = serializers.DateTimeField()
+
+
+# --- shifts and the driver's own profile ---------------------------------------------------
+
+
+class ShiftSerializer(serializers.ModelSerializer[Shift]):
+    class Meta:
+        model = Shift
+        fields = ["public_id", "started_at", "ended_at"]
+        read_only_fields = fields
+
+
+class ShiftTimeSerializer(serializers.Serializer[dict[str, Any]]):
+    occurred_at = serializers.DateTimeField(
+        required=False,
+        help_text=(
+            "The device's time of the event, for requests queued offline. At most 5 minutes "
+            "in the future and 24 hours in the past (else 400). Default: now."
+        ),
+    )
+
+
+class MyDriverSerializer(DriverSerializer):
+    """The signed-in driver's own profile, as `DriverSerializer` plus the open shift."""
+
+    active_shift = serializers.SerializerMethodField()
+
+    class Meta(DriverSerializer.Meta):
+        fields = [*DriverSerializer.Meta.fields, "active_shift"]
+        read_only_fields = fields
+
+    @extend_schema_field(ShiftSerializer(allow_null=True))
+    def get_active_shift(self, driver: Driver) -> dict[str, Any] | None:
+        shift = selectors.active_shift(driver)
+        return ShiftSerializer(shift).data if shift else None

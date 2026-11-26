@@ -103,7 +103,7 @@ def test_all_builtin_roles_are_seeded() -> None:
         (RoleCode.VIEWER, {"customers.view", "shipments.view", *FLEET_VIEW}),
         (RoleCode.WAREHOUSE_STAFF, {"shipments.view"}),
         (RoleCode.FLEET_MANAGER, {"shipments.view", "uploads.create", *FLEET_MANAGE}),
-        (RoleCode.DRIVER, set()),
+        (RoleCode.DRIVER, {"shifts.manage_own"}),
     ],
 )
 def test_seeded_role_permissions(role: RoleCode, expected: set[str]) -> None:

@@ -18,6 +18,7 @@ from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.core.errors import DomainError, ErrorCode, invalid_reference
 from apps.fleet import selectors
+from apps.fleet.constants import SHIFT_MAX_BACKDATE, SHIFT_MAX_FUTURE_SKEW
 from apps.fleet.models import (
     Driver,
     DriverDocument,
@@ -25,6 +26,7 @@ from apps.fleet.models import (
     DriverStatus,
     FleetDocument,
     LicenseCategory,
+    Shift,
     Vehicle,
     VehicleDocument,
     VehicleStatus,
@@ -474,3 +476,93 @@ def download_document(
     url, expires_at = uploads.presign_download(locked.upload)
     _audit(AuditAction.FLEET_DOCUMENT_DOWNLOADED, actor, locked, "fleet_document", request)
     return url, expires_at
+
+
+# --- shifts --------------------------------------------------------------------------------
+
+
+def _lock_own_driver(actor: User) -> Driver:
+    """Lock the actor's own live driver row, which also serializes their shift changes."""
+    driver = (
+        Driver.objects.for_company(actor.company)
+        .select_for_update()
+        .filter(user=actor, archived_at__isnull=True)
+        .first()
+    )
+    if driver is None:
+        raise DomainError(ErrorCode.DRIVER_PROFILE_INACTIVE)
+    return driver
+
+
+def _shift_time(
+    occurred_at: datetime | None,
+    now: datetime,
+    *,
+    earliest: datetime | None = None,
+    strictly_after: bool = False,
+) -> datetime:
+    """The time to record: the device's `occurred_at` (queued offline) within a bounded
+    window around `now`, else `now`. `earliest` is the previous shift's end (a start) or
+    this shift's start (an end, `strictly_after`)."""
+    moment = occurred_at or now
+    if moment > now + SHIFT_MAX_FUTURE_SKEW:
+        problem = "Must not be in the future."
+    elif moment < now - SHIFT_MAX_BACKDATE:
+        problem = "Must not be more than 24 hours ago."
+    elif earliest is not None and (moment <= earliest if strictly_after else moment < earliest):
+        problem = "Must be after the previous shift event."
+    else:
+        return moment
+    raise DomainError(ErrorCode.VALIDATION_INVALID, errors={"occurred_at": [problem]})
+
+
+def _open_shift_exists(driver: Driver) -> bool:
+    return selectors.active_shift(driver) is not None
+
+
+@transaction.atomic
+def start_shift(*, actor: User, occurred_at: datetime | None) -> Shift:
+    """Start the actor's shift. A suspended driver cannot; leave and document gaps do not
+    block it (assignment checks them, memory D-API-28)."""
+    driver = _lock_own_driver(actor)
+    if driver.status == DriverStatus.SUSPENDED:
+        raise DomainError(ErrorCode.DRIVER_SUSPENDED)
+    if _open_shift_exists(driver):
+        raise DomainError(ErrorCode.SHIFT_ALREADY_OPEN)
+    now = timezone.now()
+    last_end = (
+        Shift.objects.for_company(driver.company)
+        .filter(driver=driver)
+        .order_by("-ended_at")
+        .values_list("ended_at", flat=True)
+        .first()
+    )
+    started_at = _shift_time(occurred_at, now, earliest=last_end)
+    shift = Shift(company=actor.company, driver=driver, started_at=started_at)
+    shift.start_recorded_at = now
+    try:
+        with transaction.atomic():
+            shift.save()
+    except IntegrityError:
+        if _open_shift_exists(driver):  # lost a race that the row lock should rule out
+            raise DomainError(ErrorCode.SHIFT_ALREADY_OPEN) from None
+        raise
+    return shift
+
+
+@transaction.atomic
+def end_shift(*, actor: User, occurred_at: datetime | None) -> Shift:
+    driver = _lock_own_driver(actor)
+    shift = (
+        Shift.objects.for_company(driver.company)
+        .select_for_update()
+        .filter(driver=driver, ended_at=None)
+        .first()
+    )
+    if shift is None:
+        raise DomainError(ErrorCode.SHIFT_NOT_OPEN)
+    now = timezone.now()
+    shift.ended_at = _shift_time(occurred_at, now, earliest=shift.started_at, strictly_after=True)
+    shift.end_recorded_at = now
+    shift.save(update_fields=["ended_at", "end_recorded_at", "updated_at"])
+    return shift

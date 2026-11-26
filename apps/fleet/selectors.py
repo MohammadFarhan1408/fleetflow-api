@@ -16,6 +16,7 @@ from django.shortcuts import get_object_or_404
 
 from apps.accounts.models import User
 from apps.accounts.selectors import branches_in_scope
+from apps.core.errors import DomainError, ErrorCode
 from apps.fleet.models import (
     Driver,
     DriverDocument,
@@ -24,6 +25,7 @@ from apps.fleet.models import (
     DriverStatus,
     DriverUnavailableReason,
     LicenseCategory,
+    Shift,
     Vehicle,
     VehicleDocument,
     VehicleDocumentType,
@@ -63,21 +65,40 @@ def drivers_in_scope(user: User) -> QuerySet[Driver]:
     )
 
 
-def drivers_for_user(user: User, on_date: date) -> QuerySet[Driver]:
-    """Scoped drivers with what the serializer reads, plus `on_leave` for `on_date`."""
+def _with_availability(drivers: QuerySet[Driver], on_date: date) -> QuerySet[Driver]:
+    """`drivers` with what `driver_unavailability` reads: leave and licence for `on_date`."""
     covering_leave = DriverLeave.objects.filter(
         driver=OuterRef("pk"), starts_on__lte=on_date, ends_on__gte=on_date
     )
     licenses = DriverDocument.objects.filter(driver=OuterRef("pk"), type=DriverDocumentType.LICENSE)
-    return (
-        drivers_in_scope(user)
-        .select_related("user", "branch")
-        .annotate(
-            on_leave=Exists(covering_leave),
-            has_license=Exists(licenses.filter(archived_at__isnull=True)),
-            license_valid=Exists(licenses.filter(_live_valid(on_date))),
-        )
+    return drivers.select_related("user", "branch").annotate(
+        on_leave=Exists(covering_leave),
+        has_license=Exists(licenses.filter(archived_at__isnull=True)),
+        license_valid=Exists(licenses.filter(_live_valid(on_date))),
     )
+
+
+def drivers_for_user(user: User, on_date: date) -> QuerySet[Driver]:
+    """Scoped drivers with what the serializer reads, plus the availability annotations
+    for `on_date`."""
+    return _with_availability(drivers_in_scope(user), on_date)
+
+
+def own_driver(user: User, on_date: date) -> Driver:
+    """The signed-in driver's own live profile. Not branch-scoped: a driver needs no
+    branch membership to work. Without an active profile every driver endpoint answers
+    403 `driver.profile_inactive` (architecture §7)."""
+    qs = Driver.objects.for_company(user.company).filter(user=user, archived_at__isnull=True)
+    driver = _with_availability(qs, on_date).first()
+    if driver is None:
+        raise DomainError(ErrorCode.DRIVER_PROFILE_INACTIVE)
+    return driver
+
+
+def active_shift(driver: Driver) -> Shift | None:
+    """The driver's open shift, if any (at most one, by constraint). Phase 7 ping
+    ingestion asks this too."""
+    return Shift.objects.for_company(driver.company).filter(driver=driver, ended_at=None).first()
 
 
 def list_drivers(

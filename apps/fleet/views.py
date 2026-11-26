@@ -15,11 +15,11 @@ from rest_framework.views import APIView
 from apps.accounts.authentication import current_user
 from apps.accounts.models import User
 from apps.accounts.permissions import HasRequiredPermission, get_user_permissions
-from apps.core.idempotency import idempotent
+from apps.core.idempotency import idempotency_required, idempotent
 from apps.core.serializers import ErrorSerializer
 from apps.fleet import selectors, services
 from apps.fleet.models import Driver, DriverDocument, DriverLeave, Vehicle, VehicleDocument
-from apps.fleet.permissions import FLEET_MANAGE, FLEET_VIEW
+from apps.fleet.permissions import FLEET_MANAGE, FLEET_VIEW, SHIFTS_MANAGE_OWN
 from apps.fleet.serializers import (
     AvailabilityDateQuerySerializer,
     DownloadSerializer,
@@ -33,6 +33,9 @@ from apps.fleet.serializers import (
     DriverUpdateSerializer,
     LeaveSerializer,
     LeaveWriteSerializer,
+    MyDriverSerializer,
+    ShiftSerializer,
+    ShiftTimeSerializer,
     VehicleDocumentListQuerySerializer,
     VehicleDocumentSerializer,
     VehicleDocumentWriteSerializer,
@@ -503,3 +506,80 @@ class VehicleDocumentDownloadView(FleetAccess):
         vehicle = _vehicle_of(request, vehicle_id)
         document = selectors.get_document(selectors.vehicle_documents(vehicle), public_id)
         return _download_response(request, document)
+
+
+# --- the signed-in driver ------------------------------------------------------------------
+
+
+class DriverSelfAccess(APIView):
+    """Endpoints for the `driver` role acting on their own profile. Without an active
+    profile they answer 403 `driver.profile_inactive`."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"GET": SHIFTS_MANAGE_OWN, "POST": SHIFTS_MANAGE_OWN}
+
+
+class MyDriverView(DriverSelfAccess):
+    """The signed-in driver's profile, today's availability and the open shift."""
+
+    @extend_schema(responses={200: MyDriverSerializer, 401: ERROR, 403: ERROR})
+    def get(self, request: Request) -> Response:
+        user = current_user(request)
+        on_date = user.company.local_today()
+        driver = selectors.own_driver(user, on_date)
+        return Response(MyDriverSerializer(driver, context={"on_date": on_date}).data)
+
+
+class MyShiftStartView(DriverSelfAccess):
+    """Start the signed-in driver's shift. `Idempotency-Key` is required: the app queues
+    this offline and replays it. A suspended driver gets 409 `driver.suspended`; a second
+    open shift 409 `shift.already_open`."""
+
+    @extend_schema(
+        request=ShiftTimeSerializer,
+        responses={
+            201: ShiftSerializer,
+            400: ERROR,
+            401: ERROR,
+            403: ERROR,
+            409: ERROR,
+            422: ERROR,
+        },
+    )
+    @idempotency_required
+    def post(self, request: Request) -> Response:
+        actor = current_user(request)
+        selectors.own_driver(actor, actor.company.local_today())  # 403 before body errors
+        serializer = ShiftTimeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        shift = services.start_shift(
+            actor=actor, occurred_at=serializer.validated_data.get("occurred_at")
+        )
+        return Response(ShiftSerializer(shift).data, status=status.HTTP_201_CREATED)
+
+
+class MyShiftEndView(DriverSelfAccess):
+    """End the signed-in driver's open shift (409 `shift.not_open` if none). Needs an
+    `Idempotency-Key`."""
+
+    @extend_schema(
+        request=ShiftTimeSerializer,
+        responses={
+            200: ShiftSerializer,
+            400: ERROR,
+            401: ERROR,
+            403: ERROR,
+            409: ERROR,
+            422: ERROR,
+        },
+    )
+    @idempotency_required
+    def post(self, request: Request) -> Response:
+        actor = current_user(request)
+        selectors.own_driver(actor, actor.company.local_today())
+        serializer = ShiftTimeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        shift = services.end_shift(
+            actor=actor, occurred_at=serializer.validated_data.get("occurred_at")
+        )
+        return Response(ShiftSerializer(shift).data)

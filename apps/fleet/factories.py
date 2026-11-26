@@ -1,7 +1,8 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import factory
+from django.utils import timezone
 
 from apps.accounts.factories import UserFactory
 from apps.accounts.models import RoleCode
@@ -11,6 +12,7 @@ from apps.fleet.models import (
     DriverDocumentType,
     DriverLeave,
     LicenseCategory,
+    Shift,
     Vehicle,
     VehicleDocument,
     VehicleDocumentType,
@@ -85,3 +87,15 @@ class VehicleDocumentFactory(factory.django.DjangoModelFactory[VehicleDocument])
     number = "REG-0001"
     expires_on = FAR_FUTURE
     upload = factory.SubFactory(AttachedUploadFactory, company=factory.SelfAttribute("..company"))
+
+
+class ShiftFactory(factory.django.DjangoModelFactory[Shift]):
+    """An open shift that started two hours ago."""
+
+    class Meta:
+        model = Shift
+
+    driver = factory.SubFactory(DriverFactory)
+    company = factory.SelfAttribute("driver.company")
+    started_at = factory.LazyFunction(lambda: timezone.now() - timedelta(hours=2))
+    start_recorded_at = factory.LazyFunction(lambda: timezone.now() - timedelta(hours=2))
