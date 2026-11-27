@@ -2,7 +2,7 @@
 
 Statuses: `NOT STARTED` · `IN PROGRESS` · `BLOCKED` · `COMPLETED`. A phase becomes `COMPLETED` only when its acceptance criteria have been verified and the owner has approved the checkpoint. Update the status here **and** in [memory.md](memory.md).
 
-**Current phase: Phase 4, IN PROGRESS** (4-PR plan approved 2026-11-26). Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24; Phase 3 COMPLETED 2026-11-26.
+**Current phase: Phase 4 COMPLETED 2026-11-28; Phase 5 (Delivery Workflow) is next and NOT STARTED, pending owner go-ahead.** Phase 0 COMPLETED 2026-11-22; Phase 1 COMPLETED 2026-11-23; Phase 2 COMPLETED 2026-11-24; Phase 3 COMPLETED 2026-11-26; Phase 4 COMPLETED 2026-11-28.
 
 ## Ordering and dependencies
 
@@ -108,19 +108,19 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
 
 ## Phase 4: Dispatch & Route Operations
 
-- **Status**: IN PROGRESS (plan approved by the owner 2026-11-26; decisions D-API-29)
+- **Status**: COMPLETED (2026-11-28). PRs #16, #19, #20 and #21 merged with CI green on `main` for each merge; acceptance verified on `main` (`4295797`); security reviews recorded in memory.md. Decisions D-API-29 to D-API-33. The checkpoint item below (publishing the contract to the admin and driver-app memories) is owner-handled; the notes are in memory.md §Next steps.
 - **Approved delivery plan (4 PRs, merged in order; new app `apps/dispatch`):**
-  1. **`feature/api-routes`** (pushed for review, decisions D-API-30)
+  1. **`feature/api-routes`** (merged, PR #16, decisions D-API-30)
      - `Route` (branch, `route_date`, nullable driver and vehicle, `sequence_enforced`, `version`, status `planned → assigned → loading → dispatched → in_progress → completed | cancelled`; `loading` unused until Phase 6) and `RouteStop` (one shipment per stop, `pickup` or `delivery`, `sequence`, optional time window, `has_location`; `UNIQUE(route, sequence)` deferrable, `UNIQUE(route, shipment, type)`).
      - List/create/detail/update, add and remove stop, reorder and cancel, with `version` on every change (409 `route.version_conflict`). Pickup-before-delivery, duplicate-stop and sequence rules, at most 300 stops.
      - Shipment status follows the stops: `created|sorted → assigned` on the first stop; back to the previous status on removal or cancellation. This adds the service-level edges `assigned → created` and `assigned → sorted` to the §11 table (owner-approved; the enum is unchanged; CHANGELOG entry).
      - Ungeocoded addresses are allowed and flagged `has_location: false`; invalid coordinates are 400.
      - `dispatch.view`, `dispatch.manage`, `dispatch.all_branches` seeded.
-  2. **`feature/api-route-assignment`** (committed locally for review, decisions D-API-31)
+  2. **`feature/api-route-assignment`** (merged, PR #19, decisions D-API-31)
      - `assign` and `unassign` with every §13 rule through the fleet selectors for the route date (driver and vehicle availability, licence category, registration and insurance, one active route per driver and vehicle per date, capacity by weight and volume, `dispatch.override_capacity` with a reason, audited), idempotent repeats, and a single-winner race test.
-  3. **`feature/api-dispatch`** (implemented, decisions D-API-32)
+  3. **`feature/api-dispatch`** (merged, PR #20, decisions D-API-32)
      - Manifest created at dispatch (the expected set; `MANIFEST_ENFORCEMENT` off until Phase 6), `dispatch` (409 `route.empty`), the driver's `GET /me/routes/`, `GET /me/routes/{id}/` (own routes only) and `POST /me/routes/{id}/start/` (needs an open shift and a dispatched route; shipments become `out_for_delivery`), and `dispatch.reassign_active` for in-progress reassignment.
-  4. **`feature/api-route-suggest`** (implemented, decisions D-API-33)
+  4. **`feature/api-route-suggest`** (merged, PR #21, decisions D-API-33)
      - `suggest-order`: greedy nearest neighbour on straight-line distance, respecting pickup-before-delivery, ungeocoded stops kept last in manual order, not applied until the client reorders (`optimization: "nearest_neighbour"`).
 - **Goal**: dispatchers can build, assign and dispatch routes.
 - **Scope**: Route, RouteStop, sequencing, versioned updates, assignment service with all rules, manifest model, dispatch action, driver "my route" endpoints, nearest-neighbour suggestion, manifest enforcement flag (off until Phase 6).
