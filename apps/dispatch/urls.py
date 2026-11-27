@@ -14,6 +14,11 @@ urlpatterns = [
     path(
         "routes/<uuid:public_id>/reorder/", views.RouteReorderView.as_view(), name="route-reorder"
     ),
+    path(
+        "routes/<uuid:public_id>/suggest-order/",
+        views.RouteSuggestOrderView.as_view(),
+        name="route-suggest-order",
+    ),
     path("routes/<uuid:public_id>/assign/", views.RouteAssignView.as_view(), name="route-assign"),
     path(
         "routes/<uuid:public_id>/unassign/",

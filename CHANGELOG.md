@@ -4,6 +4,12 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: suggested stop order (Phase 4 PR 4)
+
+Dispatchers can ask for a shorter stop order and apply it through `reorder`.
+
+- **`GET /api/v1/routes/{id}/suggest-order/`** (`dispatch.view`; no body, no `Idempotency-Key`) → `200 {optimization: "nearest_neighbour", version, stop_ids[]}`. `stop_ids` lists every stop once. It is a greedy nearest-neighbour order on straight-line (great-circle) distance, starting at the first stop of the current order that may come first, so it depends on the order the route has now. A delivery never precedes its pickup on the route. Stops whose address has no coordinates (`has_location: false`), and deliveries whose pickup has none, stay at the end in their current order. Nothing is saved: the stop order and `version` do not change. To apply it, send `stop_ids` and the returned `version` to `POST /routes/{id}/reorder/`; if the route changed meanwhile that is 409 `route.version_conflict`. Only `planned` and `assigned` routes (any other status is 409 `route.invalid_status`); another company's or branch's route is 404. An empty route returns `stop_ids: []`.
+
 ### api-additive: dispatch, reassignment and the driver's routes (Phase 4 PR 3)
 
 Dispatchers send assigned routes out, and drivers see and start them. Suggest-order follows in PR 4; stop work and proof of delivery in Phase 5.

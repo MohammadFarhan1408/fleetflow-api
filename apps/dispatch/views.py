@@ -11,10 +11,11 @@ from rest_framework.views import APIView
 
 from apps.accounts.authentication import current_user
 from apps.accounts.permissions import HasRequiredPermission
+from apps.core.errors import DomainError, ErrorCode
 from apps.core.idempotency import idempotency_required, idempotent
 from apps.core.serializers import ErrorSerializer
 from apps.dispatch import selectors, services
-from apps.dispatch.models import Route
+from apps.dispatch.models import EDITABLE_STATUSES, Route
 from apps.dispatch.permissions import DISPATCH_MANAGE, DISPATCH_VIEW, ROUTES_WORK_OWN
 from apps.dispatch.serializers import (
     AssignSerializer,
@@ -30,6 +31,7 @@ from apps.dispatch.serializers import (
     RouteUpdateSerializer,
     RouteVersionSerializer,
     StopAddSerializer,
+    SuggestedOrderSerializer,
 )
 
 ERROR = OpenApiResponse(ErrorSerializer)
@@ -167,6 +169,32 @@ class RouteReorderView(DispatchAccess):
         serializer.is_valid(raise_exception=True)
         services.reorder_stops(actor=actor, route=route, **serializer.validated_data)
         return _route_response(request, route)
+
+
+class RouteSuggestOrderView(DispatchAccess):
+    """A nearest-neighbour order for the stops of a `planned` or `assigned` route
+    (`dispatch.view`): straight-line distance, a pickup before its delivery, stops without
+    coordinates last in their manual order. Nothing is saved; send `stop_ids` and `version`
+    to `reorder` to apply it. 409 `route.invalid_status` for any other status."""
+
+    @extend_schema(responses={200: SuggestedOrderSerializer, **READ_ERRORS, 409: ERROR})
+    def get(self, request: Request, public_id: uuid.UUID) -> Response:
+        route = selectors.get_route(current_user(request), public_id)
+        if route.status not in EDITABLE_STATUSES:
+            raise DomainError(
+                ErrorCode.ROUTE_INVALID_STATUS,
+                detail=f"A {route.status} route's stops cannot be reordered.",
+            )
+        ordered = selectors.suggest_stop_order(route.ordered_stops)  # type: ignore[attr-defined]
+        return Response(
+            SuggestedOrderSerializer(
+                {
+                    "optimization": "nearest_neighbour",
+                    "version": route.version,
+                    "stop_ids": [s.public_id for s in ordered],
+                }
+            ).data
+        )
 
 
 class RouteCancelView(DispatchAccess):
