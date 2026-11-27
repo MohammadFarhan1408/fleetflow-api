@@ -4,6 +4,24 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: assign and unassign a driver and vehicle (Phase 4 PR 2)
+
+Dispatchers give a route a driver and a vehicle. Dispatch and the driver's own routes follow in PR 3.
+
+- **New permission `dispatch.override_capacity`** (owner, admin, ops_manager, dispatcher; shown in `/me`). It allows an assignment over the vehicle's capacity, with a reason.
+- **Route rows** (list, detail and every mutation response) gain `driver` (`{public_id, full_name}` or `null`), `vehicle` (`{public_id, registration_number}` or `null`) and `capacity_override_reason` (empty unless an override was used).
+- **`POST /api/v1/routes/{id}/assign/`** `{version, driver_id, vehicle_id, override_reason?}` (`dispatch.manage`, `Idempotency-Key` optional) → `200` with the route, status `assigned`, `version` bumped. The route must be `planned` or `assigned` (assigning again replaces the pair), and its date must not be in the past. Everything is checked for the **route date**:
+  - `driver_id` and `vehicle_id` must be drivers and vehicles the caller can see **and** belong to the route's branch: not found or not visible is 400 `validation.invalid_reference`; visible but from another branch is 400 `validation.invalid`.
+  - 409 `assignment.driver_unavailable` or `assignment.vehicle_unavailable`, with `errors.reasons` listing every fleet availability reason (`suspended`, `on_leave`, `archived`, `login_disabled`, `license_missing`, `license_expired`; `in_maintenance`, `out_of_service`, `registration_missing`, `registration_expired`, `insurance_missing`, `insurance_expired`, `archived`). A licence or document valid through the route date still counts.
+  - 409 `assignment.license_category`: the driver's valid licence does not list the vehicle's required category.
+  - 409 `assignment.driver_conflict` or `assignment.vehicle_conflict`: another route on that date in `assigned`, `loading`, `dispatched` or `in_progress` already has them. Completed and cancelled routes do not count.
+  - 409 `assignment.over_capacity`: the total weight or volume (from the shipment items) of the route's shipments exceeds the vehicle's capacity. Send `override_reason` to override: that needs `dispatch.override_capacity` (else 403 `permission.denied`), is stored on the route and audited. A reason sent when the load fits is ignored.
+  - Repeating the current driver and vehicle on an `assigned` route returns it unchanged (`200`, no version check, no new audit entry), so a retry after a lost response is safe. Two dispatchers racing for one driver or vehicle: one gets `200`, the other 409.
+- **`POST /api/v1/routes/{id}/unassign/`** `{version}` (`dispatch.manage`) → `200`, back to `planned` with `driver` and `vehicle` `null`. Stops stay, and so do the shipments' `assigned` status. Repeating it on a `planned` route is a no-op; any later status is 409 `route.invalid_status` (reassigning an active route comes with dispatch).
+- **Adding a stop to a route that has a vehicle** is now also checked against capacity: 409 `assignment.over_capacity`, nothing changes. A stored override covers only the load it was given for. To go over, unassign, add the stops, then assign again with a reason.
+- **Audit actions:** `route.assigned` (driver and vehicle IDs and `capacity_override`, never the reason text) and `route.unassigned`.
+- **Clarification of PR 1:** unassigning does not return shipments to `created`/`sorted`. They keep `assigned` while their stops are on the route.
+
 ### api-additive: unarchive a driver
 
 - **`POST /api/v1/drivers/{public_id}/unarchive/`** (`fleet.manage`, no body) → `200` with the driver, `archived_at` back to `null`. Repeating it, or calling it on a driver that is not archived, is a no-op. Another company's or branch's driver is 404. The call is audited as `driver.unarchived`. The driver's documents, leave and status are unchanged, and the driver is available for dispatch again if nothing else blocks it. A driver user who was blocked with `driver.profile_inactive` can use the driver endpoints again.

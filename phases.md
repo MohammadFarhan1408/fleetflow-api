@@ -116,7 +116,7 @@ Client dependencies (for coordination): admin Phase 1 needs API Phase 1; driver-
      - Shipment status follows the stops: `created|sorted → assigned` on the first stop; back to the previous status on removal or cancellation. This adds the service-level edges `assigned → created` and `assigned → sorted` to the §11 table (owner-approved; the enum is unchanged; CHANGELOG entry).
      - Ungeocoded addresses are allowed and flagged `has_location: false`; invalid coordinates are 400.
      - `dispatch.view`, `dispatch.manage`, `dispatch.all_branches` seeded.
-  2. **`feature/api-route-assignment`**
+  2. **`feature/api-route-assignment`** (committed locally for review, decisions D-API-31)
      - `assign` and `unassign` with every §13 rule through the fleet selectors for the route date (driver and vehicle availability, licence category, registration and insurance, one active route per driver and vehicle per date, capacity by weight and volume, `dispatch.override_capacity` with a reason, audited), idempotent repeats, and a single-winner race test.
   3. **`feature/api-dispatch`**
      - Manifest created at dispatch (the expected set; `MANIFEST_ENFORCEMENT` off until Phase 6), `dispatch` (409 `route.empty`), the driver's `GET /me/routes/`, `GET /me/routes/{id}/` (own routes only) and `POST /me/routes/{id}/start/` (needs an open shift and a dispatched route; shipments become `out_for_delivery`), and `dispatch.reassign_active` for in-progress reassignment.

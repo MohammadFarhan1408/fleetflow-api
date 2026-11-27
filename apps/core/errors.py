@@ -71,6 +71,12 @@ class ErrorCode(StrEnum):
     DRIVER_SUSPENDED = "driver.suspended"
     SHIFT_ALREADY_OPEN = "shift.already_open"
     SHIFT_NOT_OPEN = "shift.not_open"
+    ASSIGNMENT_DRIVER_UNAVAILABLE = "assignment.driver_unavailable"
+    ASSIGNMENT_LICENSE_CATEGORY = "assignment.license_category"
+    ASSIGNMENT_VEHICLE_UNAVAILABLE = "assignment.vehicle_unavailable"
+    ASSIGNMENT_OVER_CAPACITY = "assignment.over_capacity"
+    ASSIGNMENT_DRIVER_CONFLICT = "assignment.driver_conflict"
+    ASSIGNMENT_VEHICLE_CONFLICT = "assignment.vehicle_conflict"
     ROUTE_VERSION_CONFLICT = "route.version_conflict"
     ROUTE_INVALID_STATUS = "route.invalid_status"
     ROUTE_SHIPMENT_UNAVAILABLE = "route.shipment_unavailable"
@@ -192,6 +198,24 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.DRIVER_SUSPENDED: ErrorSpec(409, ErrorType.CONFLICT, "The driver is suspended"),
     ErrorCode.SHIFT_ALREADY_OPEN: ErrorSpec(409, ErrorType.CONFLICT, "A shift is already open"),
     ErrorCode.SHIFT_NOT_OPEN: ErrorSpec(409, ErrorType.CONFLICT, "There is no open shift"),
+    ErrorCode.ASSIGNMENT_DRIVER_UNAVAILABLE: ErrorSpec(
+        409, ErrorType.CONFLICT, "The driver is not available on the route date"
+    ),
+    ErrorCode.ASSIGNMENT_LICENSE_CATEGORY: ErrorSpec(
+        409, ErrorType.CONFLICT, "The driver's licence does not cover the vehicle"
+    ),
+    ErrorCode.ASSIGNMENT_VEHICLE_UNAVAILABLE: ErrorSpec(
+        409, ErrorType.CONFLICT, "The vehicle is not available on the route date"
+    ),
+    ErrorCode.ASSIGNMENT_OVER_CAPACITY: ErrorSpec(
+        409, ErrorType.CONFLICT, "The load exceeds the vehicle's capacity"
+    ),
+    ErrorCode.ASSIGNMENT_DRIVER_CONFLICT: ErrorSpec(
+        409, ErrorType.CONFLICT, "The driver already has an active route on that date"
+    ),
+    ErrorCode.ASSIGNMENT_VEHICLE_CONFLICT: ErrorSpec(
+        409, ErrorType.CONFLICT, "The vehicle already has an active route on that date"
+    ),
     ErrorCode.ROUTE_VERSION_CONFLICT: ErrorSpec(
         409, ErrorType.CONFLICT, "The route has changed; reload and retry"
     ),

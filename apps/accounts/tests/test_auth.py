@@ -124,6 +124,7 @@ def test_me_returns_session_bootstrap(
     assert body["permissions"] == [
         "customers.view",
         "dispatch.manage",
+        "dispatch.override_capacity",
         "dispatch.view",
         "fleet.view",
         "shipments.cancel",
@@ -145,6 +146,7 @@ def test_me_lists_permissions_for_owner(api_client: APIClient) -> None:
         "customers.view",
         "dispatch.all_branches",
         "dispatch.manage",
+        "dispatch.override_capacity",
         "dispatch.view",
         "fleet.all_branches",
         "fleet.manage",

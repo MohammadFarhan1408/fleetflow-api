@@ -167,6 +167,8 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "vehicle-document-download": _vehicle_document_in,
     "route-detail": _route_in,
     "route-stops": _route_in,
+    "route-assign": _route_in,
+    "route-unassign": _route_in,
     "route-reorder": _route_in,
     "route-cancel": _route_in,
     "route-stop-detail": _route_stop_in,

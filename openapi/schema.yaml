@@ -2009,6 +2009,74 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/routes/{public_id}/assign/:
+    post:
+      operationId: routes_assign_create
+      description: |-
+        Give a route a driver and a vehicle (`dispatch.manage`), checked for the route date:
+        availability, licence, documents, one active route per date, branch and capacity. Over
+        capacity needs `override_reason` and `dispatch.override_capacity`. Repeating the same
+        assignment returns the route unchanged.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Assign'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/routes/{public_id}/cancel/:
     post:
       operationId: routes_cancel_create
@@ -2166,6 +2234,72 @@ paths:
       - jwtAuth: []
       responses:
         '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/unassign/:
+    post:
+      operationId: routes_unassign_create
+      description: |-
+        Take the driver and vehicle off an `assigned` route, back to `planned`. Stops and
+        shipment status stay. Repeating it on a planned route is a no-op.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteVersion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
           content:
             application/json:
               schema:
@@ -3988,6 +4122,29 @@ components:
       - city
       - country
       - line1
+    Assign:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The route's `version` as the client last saw it.
+        driver_id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        override_reason:
+          type: string
+          default: ''
+          description: Required to go over the vehicle's capacity, which also needs
+            `dispatch.override_capacity`. Ignored when the load fits.
+          maxLength: 255
+      required:
+      - driver_id
+      - vehicle_id
+      - version
     Branch:
       type: object
       properties:
@@ -5286,6 +5443,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/_Branch'
           readOnly: true
+        driver:
+          allOf:
+          - $ref: '#/components/schemas/_DriverSummary'
+          readOnly: true
+          nullable: true
+        vehicle:
+          allOf:
+          - $ref: '#/components/schemas/_VehicleSummary'
+          readOnly: true
+          nullable: true
+        capacity_override_reason:
+          type: string
+          readOnly: true
         route_date:
           type: string
           format: date
@@ -5294,6 +5464,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/RouteStatusEnum'
           readOnly: true
+          default: planned
         sequence_enforced:
           type: boolean
           readOnly: true
@@ -5319,13 +5490,16 @@ components:
       required:
       - branch
       - cancelled_at
+      - capacity_override_reason
       - created_at
+      - driver
       - public_id
       - route_date
       - sequence_enforced
       - status
       - stop_count
       - updated_at
+      - vehicle
       - version
     RouteCreate:
       type: object
@@ -5357,6 +5531,19 @@ components:
           allOf:
           - $ref: '#/components/schemas/_Branch'
           readOnly: true
+        driver:
+          allOf:
+          - $ref: '#/components/schemas/_DriverSummary'
+          readOnly: true
+          nullable: true
+        vehicle:
+          allOf:
+          - $ref: '#/components/schemas/_VehicleSummary'
+          readOnly: true
+          nullable: true
+        capacity_override_reason:
+          type: string
+          readOnly: true
         route_date:
           type: string
           format: date
@@ -5365,6 +5552,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/RouteStatusEnum'
           readOnly: true
+          default: planned
         sequence_enforced:
           type: boolean
           readOnly: true
@@ -5395,7 +5583,9 @@ components:
       required:
       - branch
       - cancelled_at
+      - capacity_override_reason
       - created_at
+      - driver
       - public_id
       - route_date
       - sequence_enforced
@@ -5403,6 +5593,7 @@ components:
       - stop_count
       - stops
       - updated_at
+      - vehicle
       - version
     RouteStatusEnum:
       enum:
@@ -6472,6 +6663,17 @@ components:
       - code
       - name
       - public_id
+    _DriverSummary:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+      required:
+      - full_name
+      - public_id
     _DriverUser:
       type: object
       properties:
@@ -6487,6 +6689,17 @@ components:
       - email
       - full_name
       - public_id
+    _VehicleSummary:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+        registration_number:
+          type: string
+      required:
+      - public_id
+      - registration_number
   securitySchemes:
     jwtAuth:
       type: http

@@ -75,7 +75,7 @@ FLEET_VIEW = {"fleet.view"}
 FLEET_MANAGE = {"fleet.view", "fleet.manage"}
 FLEET_ALL = {*FLEET_MANAGE, "fleet.all_branches"}
 DISPATCH_VIEW = {"dispatch.view"}
-DISPATCH_MANAGE = {"dispatch.view", "dispatch.manage"}
+DISPATCH_MANAGE = {"dispatch.view", "dispatch.manage", "dispatch.override_capacity"}
 DISPATCH_ALL = {*DISPATCH_MANAGE, "dispatch.all_branches"}
 SHIPMENTS_OWN_BRANCHES = {"shipments.view", "shipments.create", "shipments.cancel"}
 SHIPMENTS_ALL = {
@@ -94,7 +94,7 @@ def test_all_builtin_roles_are_seeded() -> None:
     ("role", "expected"),
     [
         # Phase 1 users permissions; customers and shipments per D-API-21; uploads and fleet
-        # per D-API-25; shifts per D-API-28; dispatch per D-API-29.
+        # per D-API-25; shifts per D-API-28; dispatch per D-API-29 and D-API-31.
         (
             RoleCode.OWNER,
             {
