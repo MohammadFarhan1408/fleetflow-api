@@ -205,3 +205,12 @@ class ReorderSerializer(RouteVersionSerializer):
         max_length=300,
         help_text="Every stop of the route exactly once, in the new order.",
     )
+
+
+class SuggestedOrderSerializer(serializers.Serializer[dict[str, Any]]):
+    optimization = serializers.ChoiceField(choices=["nearest_neighbour"])
+    version = serializers.IntegerField(help_text="The route's version the suggestion is based on.")
+    stop_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        help_text="Every stop once, in the suggested order; send it to `reorder` to apply it.",
+    )

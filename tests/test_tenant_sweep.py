@@ -184,6 +184,7 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "me-route-start": _my_route_in,
     "route-unassign": _route_in,
     "route-reorder": _route_in,
+    "route-suggest-order": _route_in,
     "route-cancel": _route_in,
     "route-stop-detail": _route_stop_in,
 }

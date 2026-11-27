@@ -2569,6 +2569,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/routes/{public_id}/suggest-order/:
+    get:
+      operationId: routes_suggest_order_retrieve
+      description: |-
+        A nearest-neighbour order for the stops of a `planned` or `assigned` route
+        (`dispatch.view`): straight-line distance, a pickup before its delivery, stops without
+        coordinates last in their manual order. Nothing is saved; send `stop_ids` and `version`
+        to `reorder` to apply it. 409 `route.invalid_status` for any other status.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestedOrder'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/routes/{public_id}/unassign/:
     post:
       operationId: routes_unassign_create
@@ -5295,6 +5345,11 @@ components:
       - status_reason
       - updated_at
       - user
+    OptimizationEnum:
+      enum:
+      - nearest_neighbour
+      type: string
+      description: '* `nearest_neighbour` - nearest_neighbour'
     PaginatedAddressList:
       type: object
       required:
@@ -6570,6 +6625,25 @@ components:
       - status
       - total_weight_kg
       - tracking_number
+    SuggestedOrder:
+      type: object
+      properties:
+        optimization:
+          $ref: '#/components/schemas/OptimizationEnum'
+        version:
+          type: integer
+          description: The route's version the suggestion is based on.
+        stop_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Every stop once, in the suggested order; send it to `reorder`
+            to apply it.
+      required:
+      - optimization
+      - stop_ids
+      - version
     TokenPair:
       type: object
       properties:
