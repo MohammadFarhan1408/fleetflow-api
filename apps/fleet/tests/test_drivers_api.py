@@ -335,6 +335,35 @@ def test_archive_is_idempotent_and_audited_once(client: APIClient, branch: Branc
     assert AuditLog.objects.filter(action=AuditAction.DRIVER_ARCHIVED).count() == 1
 
 
+def test_unarchive_restores_the_driver_and_is_idempotent(client: APIClient, branch: Branch) -> None:
+    driver = make_driver(branch)
+    post(client, driver_url(driver.public_id, "archive/"))
+    url = driver_url(driver.public_id, "unarchive/")
+
+    first = post(client, url)
+    second = post(client, url)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert first.json()["archived_at"] is None
+    assert first.json()["availability"]["available"] is True
+    assert AuditLog.objects.filter(action=AuditAction.DRIVER_UNARCHIVED).count() == 1
+    assert (
+        post(client, driver_url(driver.public_id, "status/"), {"status": "active"}).status_code
+        == 200
+    )
+
+
+def test_unarchiving_a_driver_that_was_never_archived_is_a_silent_no_op(
+    client: APIClient, branch: Branch
+) -> None:
+    driver = make_driver(branch)
+
+    response = post(client, driver_url(driver.public_id, "unarchive/"))
+
+    assert response.status_code == 200
+    assert not AuditLog.objects.filter(action=AuditAction.DRIVER_UNARCHIVED).exists()
+
+
 def test_an_archived_driver_cannot_change_status_or_get_leave(
     client: APIClient, branch: Branch
 ) -> None:

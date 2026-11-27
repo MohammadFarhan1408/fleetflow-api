@@ -202,6 +202,18 @@ def archive_driver(*, actor: User, driver: Driver, request: HttpRequest) -> Driv
 
 
 @transaction.atomic
+def unarchive_driver(*, actor: User, driver: Driver, request: HttpRequest) -> Driver:
+    """Bring an archived driver back. Unarchiving a driver that is not archived is a no-op."""
+    driver = _lock_driver(actor, driver)
+    if not driver.is_archived:
+        return driver
+    driver.archived_at = None
+    driver.save(update_fields=["archived_at", "updated_at"])
+    _audit(AuditAction.DRIVER_UNARCHIVED, actor, driver, "driver", request)
+    return driver
+
+
+@transaction.atomic
 def add_leave(
     *,
     actor: User,

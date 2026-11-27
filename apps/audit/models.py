@@ -35,6 +35,7 @@ class AuditAction(models.TextChoices):
     DRIVER_CREATED = "driver.created", "Driver created"
     DRIVER_STATUS_CHANGED = "driver.status_changed", "Driver status changed"
     DRIVER_ARCHIVED = "driver.archived", "Driver archived"
+    DRIVER_UNARCHIVED = "driver.unarchived", "Driver unarchived"
     DRIVER_LEAVE_ADDED = "driver.leave_added", "Driver leave added"
     DRIVER_LEAVE_DELETED = "driver.leave_deleted", "Driver leave deleted"
     VEHICLE_CREATED = "vehicle.created", "Vehicle created"

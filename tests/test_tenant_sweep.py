@@ -151,6 +151,7 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "driver-detail": _driver_in,
     "driver-status": _driver_in,
     "driver-archive": _driver_in,
+    "driver-unarchive": _driver_in,
     "driver-leave-list": _driver_leaves_in,
     "driver-leave-detail": _leave_in,
     "vehicle-detail": _vehicle_in,

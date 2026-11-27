@@ -194,6 +194,21 @@ class DriverArchiveView(FleetAccess):
         return _driver_response(request, driver)
 
 
+class DriverUnarchiveView(FleetAccess):
+    """Unarchive a driver (`fleet.manage`). Repeating it is a no-op."""
+
+    @extend_schema(
+        request=None,
+        parameters=[AvailabilityDateQuerySerializer],
+        responses={200: DriverSerializer, **READ_ERRORS},
+    )
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        driver = selectors.get_driver(actor, public_id, actor.company.local_today())
+        driver = services.unarchive_driver(actor=actor, driver=driver, request=request)
+        return _driver_response(request, driver)
+
+
 class DriverLeaveListCreateView(FleetAccess, ListAPIView[DriverLeave]):
     """List a driver's leave (`fleet.view`) or add a period (`fleet.manage`). Both days are
     included; periods of one driver cannot overlap (409 `driver.leave_overlap`)."""
