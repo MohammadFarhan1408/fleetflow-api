@@ -3,6 +3,8 @@ from typing import Any
 from rest_framework import serializers
 
 from apps.accounts.models import RoleCode, User
+from apps.tenancy.models import Branch
+from apps.tenancy.validators import BRANCH_CODE_PATTERN
 
 # Generous but bounded: hashing arbitrarily long input is a cheap denial-of-service vector.
 PASSWORD_MAX_LENGTH = 256
@@ -56,6 +58,24 @@ class MeSerializer(serializers.Serializer[dict[str, Any]]):
     branches = MeBranchSerializer(many=True)
     roles = serializers.ListField(child=serializers.CharField())
     permissions = serializers.ListField(child=serializers.CharField())
+
+
+class BranchSerializer(serializers.ModelSerializer[Branch]):
+    class Meta:
+        model = Branch
+        fields = ["public_id", "code", "name"]
+        read_only_fields = fields
+
+
+class BranchCreateSerializer(serializers.Serializer[dict[str, str]]):
+    name = serializers.CharField(max_length=200)
+    # Upper-cased before validation, so "ber1" is accepted as "BER1".
+    code = serializers.RegexField(BRANCH_CODE_PATTERN, max_length=10)
+
+    def to_internal_value(self, data: Any) -> Any:
+        if isinstance(data, dict) and isinstance(data.get("code"), str):
+            data = {**data, "code": data["code"].strip().upper()}
+        return super().to_internal_value(data)
 
 
 class UserBranchSerializer(serializers.Serializer[dict[str, Any]]):

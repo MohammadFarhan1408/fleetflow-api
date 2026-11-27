@@ -81,6 +81,7 @@ class ErrorCode(StrEnum):
     ROUTE_TOO_MANY_STOPS = "route.too_many_stops"
     VEHICLE_ARCHIVED = "vehicle.archived"
     VEHICLE_DUPLICATE_REGISTRATION = "vehicle.duplicate_registration"
+    BRANCH_DUPLICATE = "branch.duplicate"
     UPLOAD_TOO_LARGE = "upload.too_large"
     UPLOAD_SIZE_MISMATCH = "upload.size_mismatch"
     UPLOAD_TYPE_MISMATCH = "upload.type_mismatch"
@@ -218,6 +219,9 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ErrorCode.VEHICLE_ARCHIVED: ErrorSpec(409, ErrorType.CONFLICT, "Vehicle is archived"),
     ErrorCode.VEHICLE_DUPLICATE_REGISTRATION: ErrorSpec(
         409, ErrorType.CONFLICT, "Registration number already in use"
+    ),
+    ErrorCode.BRANCH_DUPLICATE: ErrorSpec(
+        409, ErrorType.CONFLICT, "Branch name or code already in use"
     ),
     ErrorCode.UPLOAD_TOO_LARGE: ErrorSpec(400, ErrorType.VALIDATION, "File is too large"),
     ErrorCode.UPLOAD_SIZE_MISMATCH: ErrorSpec(

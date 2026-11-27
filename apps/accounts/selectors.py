@@ -23,6 +23,15 @@ def branches_in_scope(user: User, all_branches_permission: str) -> QuerySet[Bran
     return branches.filter(users=user)
 
 
+def branches_for_picker(user: User) -> QuerySet[Branch]:
+    """Branches `user` can choose when creating branch-scoped records: their own, or the
+    whole company when any module's `*.all_branches` permission is held. Each create
+    endpoint still validates the branch against its own scope."""
+    if any(code.endswith(".all_branches") for code in get_user_permissions(user)):
+        return Branch.objects.for_company(user.company)
+    return Branch.objects.for_company(user.company).filter(users=user)
+
+
 def get_company_user(company: Company, public_id: uuid.UUID) -> User:
     """A user of `company`, or 404: other tenants' users are indistinguishable from
     missing ones (architecture §9)."""

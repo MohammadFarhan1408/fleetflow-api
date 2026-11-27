@@ -26,7 +26,7 @@ from apps.fleet.factories import (
     VehicleFactory,
 )
 from apps.shipments.factories import ShipmentFactory
-from apps.tenancy.factories import CompanyFactory
+from apps.tenancy.factories import BranchFactory, CompanyFactory
 from apps.tenancy.models import Company
 from apps.uploads.factories import UploadFactory
 
@@ -88,6 +88,11 @@ def _leave_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     leave = DriverLeaveFactory.create(driver__company=company, reason="Company A secret leave")
     kwargs = {"driver_id": leave.driver.public_id, "public_id": leave.public_id}
     return kwargs, [str(leave.public_id), leave.reason, leave.driver.user.email]
+
+
+def _branch_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    branch = BranchFactory.create(company=company, name="Secret Hub", code="SECRETX")
+    return {"public_id": branch.public_id}, [str(branch.public_id), branch.name, branch.code]
 
 
 def _vehicle_in(company: Company) -> tuple[dict[str, Any], list[str]]:
@@ -174,6 +179,7 @@ PUBLIC_ROUTES = {"public-tracking"}
 # URL name → strings in company A that must never appear in company B's list response.
 LIST_ROUTES: dict[str, ObjectFactory] = {
     "user-list": _user_in,
+    "branch-list": _branch_in,
     "customer-list": _customer_in,
     "shipment-list": _shipment_in,
     "driver-list": _driver_in,

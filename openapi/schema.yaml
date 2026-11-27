@@ -169,6 +169,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/branches/:
+    get:
+      operationId: branches_list
+      description: |-
+        List the branches the caller can pick when creating drivers, vehicles, shipments or
+        routes (any signed-in user), or add one (`branches.manage`).
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - branches
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBranchList'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+    post:
+      operationId: branches_create
+      description: |-
+        List the branches the caller can pick when creating drivers, vehicles, shipments or
+        routes (any signed-in user), or add one (`branches.manage`).
+      tags:
+      - branches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BranchCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Branch'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/customers/:
     get:
       operationId: customers_list
@@ -3853,6 +3941,36 @@ components:
       - city
       - country
       - line1
+    Branch:
+      type: object
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          readOnly: true
+        name:
+          type: string
+          readOnly: true
+      required:
+      - code
+      - name
+      - public_id
+    BranchCreate:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        code:
+          type: string
+          maxLength: 10
+          pattern: ^[A-Z0-9]{2,10}$
+      required:
+      - code
+      - name
     BranchRef:
       type: object
       properties:
@@ -4576,6 +4694,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Address'
+    PaginatedBranchList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Branch'
     PaginatedCustomerList:
       type: object
       required:
