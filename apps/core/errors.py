@@ -81,6 +81,9 @@ class ErrorCode(StrEnum):
     ROUTE_INVALID_STATUS = "route.invalid_status"
     ROUTE_SHIPMENT_UNAVAILABLE = "route.shipment_unavailable"
     ROUTE_STOPS_STARTED = "route.stops_started"
+    ROUTE_EMPTY = "route.empty"
+    ROUTE_NOT_DISPATCHED = "route.not_dispatched"
+    ROUTE_NOT_DUE = "route.not_due"
     ROUTE_DUPLICATE_STOP = "route.duplicate_stop"
     ROUTE_INVALID_SEQUENCE = "route.invalid_sequence"
     ROUTE_PICKUP_DEPENDENCY = "route.pickup_dependency"
@@ -227,6 +230,13 @@ ERROR_SPECS: dict[ErrorCode, ErrorSpec] = {
     ),
     ErrorCode.ROUTE_STOPS_STARTED: ErrorSpec(
         409, ErrorType.CONFLICT, "The route has stops that were already worked"
+    ),
+    ErrorCode.ROUTE_EMPTY: ErrorSpec(409, ErrorType.CONFLICT, "The route has no stops"),
+    ErrorCode.ROUTE_NOT_DISPATCHED: ErrorSpec(
+        409, ErrorType.CONFLICT, "The route has not been dispatched"
+    ),
+    ErrorCode.ROUTE_NOT_DUE: ErrorSpec(
+        409, ErrorType.CONFLICT, "The route cannot be started before its date"
     ),
     ErrorCode.ROUTE_DUPLICATE_STOP: ErrorSpec(
         400, ErrorType.VALIDATION, "The shipment already has this stop on the route"

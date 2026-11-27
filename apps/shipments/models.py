@@ -182,6 +182,7 @@ STATUS_EVENT_TYPES = (TrackingEventType.STATUS_CHANGE, TrackingEventType.CORRECT
 
 class EventSource(models.TextChoices):
     ADMIN = "admin", "Admin console"
+    DRIVER_APP = "driver_app", "Driver app"
 
 
 # The django-stubs plugin types each queryset's as_manager() as a distinct generated class,

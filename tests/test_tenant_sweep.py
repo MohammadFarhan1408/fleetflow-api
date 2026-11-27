@@ -18,6 +18,7 @@ from apps.accounts.models import RoleCode
 from apps.accounts.tests.conftest import login
 from apps.customers.factories import AddressFactory, CustomerFactory
 from apps.dispatch.factories import RouteFactory, RouteStopFactory
+from apps.dispatch.models import RouteStatus
 from apps.fleet.factories import (
     DriverDocumentFactory,
     DriverFactory,
@@ -134,6 +135,15 @@ def _route_stop_in(company: Company) -> tuple[dict[str, Any], list[str]]:
     return kwargs, secrets
 
 
+def _my_route_in(company: Company) -> tuple[dict[str, Any], list[str]]:
+    route = RouteFactory.create(branch__company=company, status=RouteStatus.DISPATCHED)
+    return {"public_id": route.public_id}, [str(route.public_id)]
+
+
+# Routes only the `driver` role can call, on their own routes: the sweep calls them as an
+# active driver of company B (an owner would get 403, which proves nothing about tenancy).
+DRIVER_ROUTES = {"me-route-detail", "me-route-start"}
+
 # URL name → creates company A's object; returns (URL kwargs, strings that must not leak).
 OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "user-detail": _user_in,
@@ -168,6 +178,10 @@ OBJECT_FACTORIES: dict[str, ObjectFactory] = {
     "route-detail": _route_in,
     "route-stops": _route_in,
     "route-assign": _route_in,
+    "route-dispatch": _route_in,
+    "route-reassign": _route_in,
+    "me-route-detail": _my_route_in,
+    "me-route-start": _my_route_in,
     "route-unassign": _route_in,
     "route-reorder": _route_in,
     "route-cancel": _route_in,
@@ -228,8 +242,11 @@ PARAMETRIZED = [
 ]
 
 
-def _client_for_other_company() -> APIClient:
-    outsider = UserFactory.create(roles=[RoleCode.OWNER])  # highest privilege, company B
+def _client_for_other_company(*, as_driver: bool = False) -> APIClient:
+    # Highest privilege, company B; or an active driver of company B for driver-only routes.
+    outsider = (
+        DriverFactory.create().user if as_driver else UserFactory.create(roles=[RoleCode.OWNER])
+    )
     client = APIClient()
     client.credentials(
         HTTP_AUTHORIZATION=f"Bearer {login(client, outsider.email).json()['access']}"
@@ -255,11 +272,13 @@ def test_other_company_object_is_404_for_every_method(route: str, pattern: URLPa
     url = "/" + route
     for name, value in kwargs.items():
         url = url.replace(f"<uuid:{name}>", str(value))
-    client = _client_for_other_company()
+    client = _client_for_other_company(as_driver=str(pattern.name) in DRIVER_ROUTES)
 
     for method in _served_methods(pattern):
         send = getattr(client, method.lower())
-        response = send(url, MUTATING_BODY, format="json")
+        # driver-app mutations require the key (architecture §20) before the lookup
+        headers = {"Idempotency-Key": "sweep"} if str(pattern.name) in DRIVER_ROUTES else {}
+        response = send(url, MUTATING_BODY, format="json", headers=headers)
         body = response.content.decode()
         assert response.status_code == 404, (method, url, response.status_code)
         assert not any(secret in body for secret in secrets), (method, url)

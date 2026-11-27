@@ -147,6 +147,7 @@ def test_me_lists_permissions_for_owner(api_client: APIClient) -> None:
         "dispatch.all_branches",
         "dispatch.manage",
         "dispatch.override_capacity",
+        "dispatch.reassign_active",
         "dispatch.view",
         "fleet.all_branches",
         "fleet.manage",

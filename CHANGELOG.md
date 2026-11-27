@@ -4,6 +4,21 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: dispatch, reassignment and the driver's routes (Phase 4 PR 3)
+
+Dispatchers send assigned routes out, and drivers see and start them. Suggest-order follows in PR 4; stop work and proof of delivery in Phase 5.
+
+- **New permissions in `/me`:** `dispatch.reassign_active` (owner, admin, ops_manager) and `routes.work_own` (the `driver` role only).
+- **Route rows** (every endpoint that returns a route) gain `dispatched_at` and `started_at` (`null` until they happen).
+- **`POST /api/v1/routes/{id}/dispatch/`** `{version}` (`dispatch.manage`, `Idempotency-Key` optional) → `200`, status `dispatched`. The route must be `assigned` (else 409 `route.invalid_status`) with a date that is not in the past (400). A route without stops is **409 `route.empty`**. The driver, vehicle, licence and capacity are checked again for the route date with the same codes as assignment (`assignment.driver_unavailable`, `assignment.vehicle_unavailable`, `assignment.license_category`, `assignment.over_capacity`; a stored capacity override still covers its load). The shipments on the route are recorded as its manifest (the expected set for warehouse loading, Phase 6); no manifest endpoint yet. Shipments keep `assigned` until the driver starts. Repeating it on a dispatched route returns it unchanged. Afterwards the route can no longer be unassigned or have stops changed; it can still be cancelled (until started).
+- **`POST /api/v1/routes/{id}/reassign/`** `{version, driver_id, vehicle_id}` (`dispatch.manage` **and** `dispatch.reassign_active`, else 403 `permission.denied`) → `200`. For `dispatched` and `in_progress` routes only (else 409 `route.invalid_status`; use assign for earlier ones), and only while every stop is `pending` (409 `route.stops_started`; splitting a route with worked stops comes with the delivery workflow). The same driver, vehicle, branch and conflict checks as assignment; the new vehicle must fit the load and there is no override. The route returns to `dispatched` (`started_at` cleared), so the new driver starts it. Shipments already `out_for_delivery` stay so. Repeating the current pair is a no-op. Audited as `route.reassigned`.
+- **Driver endpoints** (`routes.work_own`; a driver without an active profile gets 403 `driver.profile_inactive`; always limited to the caller's own routes):
+  - `GET /api/v1/me/routes/` (cursor-paginated, newest first; filters `route_date`, `status` of `dispatched`, `in_progress` or `completed`): `{public_id, branch, vehicle{public_id,registration_number}, route_date, status, sequence_enforced, version, stop_count, dispatched_at, started_at}`. Planned, assigned and cancelled routes are not listed.
+  - `GET /api/v1/me/routes/{id}/`: the same plus `stops[]` in order (the stop shape of the dispatch board, including the recipient's address and contact). No driver, capacity override or cancellation fields. Another driver's route, another company's, or one not yet dispatched is 404.
+  - `POST /api/v1/me/routes/{id}/start/` (no body, **`Idempotency-Key` required**) → `200` with the route detail, status `in_progress`. 409 `route.not_dispatched` until dispatched, 409 `route.not_due` before the route date (company timezone), 409 `shift.not_open` without an open shift. Shipments with a delivery stop that were already at the warehouse become `out_for_delivery` (tracking event source `driver_app`, reason "Route started"); shipments still to be picked up stay `assigned` until the delivery workflow confirms the pickup. Repeating it on a started route returns it unchanged. The route's own driver only: any other caller gets 404.
+- **Tracking events:** `source` gains the value `driver_app`.
+- **Audit actions:** `route.dispatched` and `route.reassigned` (IDs and enums only). Starting a route is not audited; the shipments' status events are its record.
+
 ### api-additive: assign and unassign a driver and vehicle (Phase 4 PR 2)
 
 Dispatchers give a route a driver and a vehicle. Dispatch and the driver's own routes follow in PR 3.

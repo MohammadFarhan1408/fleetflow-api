@@ -5,6 +5,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.dispatch.models import Route, RouteStatus, RouteStop, StopType
+from apps.dispatch.selectors import DRIVER_VISIBLE_STATUSES
 from apps.fleet.serializers import _BranchSerializer  # the same {public_id, code, name} summary
 from apps.shipments.models import Shipment
 from apps.shipments.serializers import ShipmentAddressSerializer
@@ -48,6 +49,8 @@ class RouteSerializer(serializers.ModelSerializer[Route]):
             "sequence_enforced",
             "version",
             "stop_count",
+            "dispatched_at",
+            "started_at",
             "cancelled_at",
             "created_at",
             "updated_at",
@@ -101,6 +104,46 @@ class RouteDetailSerializer(RouteSerializer):
         read_only_fields = fields
 
 
+class DriverRouteSerializer(serializers.ModelSerializer[Route]):
+    """A route as its driver sees it (from `selectors.own_routes`, which carries
+    `stop_count`): no assignment internals, only the vehicle and the stops to work."""
+
+    branch = _BranchSerializer(read_only=True)
+    vehicle = _VehicleSummarySerializer(read_only=True, allow_null=True)
+    stop_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Route
+        fields = [
+            "public_id",
+            "branch",
+            "vehicle",
+            "route_date",
+            "status",
+            "sequence_enforced",
+            "version",
+            "stop_count",
+            "dispatched_at",
+            "started_at",
+        ]
+        read_only_fields = fields
+
+
+class DriverRouteDetailSerializer(DriverRouteSerializer):
+    stops = RouteStopSerializer(many=True, read_only=True, source="ordered_stops")
+
+    class Meta(DriverRouteSerializer.Meta):
+        fields = [*DriverRouteSerializer.Meta.fields, "stops"]
+        read_only_fields = fields
+
+
+class DriverRouteListQuerySerializer(serializers.Serializer[dict[str, Any]]):
+    route_date = serializers.DateField(required=False)
+    status = serializers.ChoiceField(
+        choices=[(s, s.label) for s in DRIVER_VISIBLE_STATUSES], required=False
+    )
+
+
 class RouteCreateSerializer(serializers.Serializer[dict[str, Any]]):
     branch_id = serializers.UUIDField()
     route_date = serializers.DateField(help_text="Today or later, in the company timezone.")
@@ -149,6 +192,11 @@ class AssignSerializer(RouteVersionSerializer):
         help_text="Required to go over the vehicle's capacity, which also needs "
         "`dispatch.override_capacity`. Ignored when the load fits.",
     )
+
+
+class ReassignSerializer(RouteVersionSerializer):
+    driver_id = serializers.UUIDField()
+    vehicle_id = serializers.UUIDField()
 
 
 class ReorderSerializer(RouteVersionSerializer):
