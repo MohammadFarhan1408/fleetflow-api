@@ -4,6 +4,10 @@ API contract changes, newest first. Every change to `openapi/schema.yaml`, an en
 
 ## Unreleased
 
+### api-additive: unarchive a driver
+
+- **`POST /api/v1/drivers/{public_id}/unarchive/`** (`fleet.manage`, no body) → `200` with the driver, `archived_at` back to `null`. Repeating it, or calling it on a driver that is not archived, is a no-op. Another company's or branch's driver is 404. The call is audited as `driver.unarchived`. The driver's documents, leave and status are unchanged, and the driver is available for dispatch again if nothing else blocks it. A driver user who was blocked with `driver.profile_inactive` can use the driver endpoints again.
+
 ### api-additive: branch list and create
 
 `/me` returns only the caller's own branches and no `code`, so a form could not offer a branch when creating a driver, vehicle, shipment or route.

@@ -1574,6 +1574,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/drivers/{public_id}/unarchive/:
+    post:
+      operationId: drivers_unarchive_create
+      description: Unarchive a driver (`fleet.manage`). Repeating it is a no-op.
+      parameters:
+      - in: query
+        name: availability_date
+        schema:
+          type: string
+          format: date
+        description: 'Date to evaluate availability for (default: today in the company
+          timezone).'
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - drivers
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Driver'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/me/:
     get:
       operationId: me_retrieve

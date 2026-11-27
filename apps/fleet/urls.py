@@ -14,6 +14,11 @@ urlpatterns = [
         name="driver-archive",
     ),
     path(
+        "drivers/<uuid:public_id>/unarchive/",
+        views.DriverUnarchiveView.as_view(),
+        name="driver-unarchive",
+    ),
+    path(
         "drivers/<uuid:driver_id>/leave/",
         views.DriverLeaveListCreateView.as_view(),
         name="driver-leave-list",
