@@ -18,6 +18,7 @@ from apps.dispatch import selectors, services
 from apps.dispatch.factories import RouteFactory, RouteStopFactory
 from apps.dispatch.models import Route, RouteStatus, RouteStop, StopStatus
 from apps.dispatch.tests.conftest import make_shipment, make_user
+from apps.dispatch.tests.test_assignment_api import make_driver, make_vehicle
 from apps.shipments.models import Shipment, ShipmentStatus
 from apps.tenancy.factories import BranchFactory, CompanyFactory
 from apps.tenancy.models import Branch, Company
@@ -256,6 +257,148 @@ def test_two_edits_from_the_same_version_have_one_winner() -> None:
     assert RouteStop.objects.count() == 1
     assert Route.objects.get(pk=route.pk).version == 2
     assert sorted(Shipment.objects.values_list("status", flat=True)) == ["assigned", "sorted"]
+
+
+# --- assignment: database backstops and races ----------------------------------------------
+
+
+@pytest.mark.parametrize("field", ["driver", "vehicle"])
+def test_the_database_allows_one_active_route_per_driver_or_vehicle_and_date(
+    branch: Branch, field: str
+) -> None:
+    driver, vehicle = make_driver(branch), make_vehicle(branch)
+    RouteFactory.create(branch=branch, driver=driver, vehicle=vehicle, status=RouteStatus.ASSIGNED)
+    shared: dict[str, Any] = {"driver": driver} if field == "driver" else {"vehicle": vehicle}
+    fresh: dict[str, Any] = (
+        {"vehicle": make_vehicle(branch)} if field == "driver" else {"driver": make_driver(branch)}
+    )
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RouteFactory.create(branch=branch, status=RouteStatus.ASSIGNED, **shared, **fresh)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"driver": "set"},  # a driver without a vehicle
+        {"vehicle": "set"},
+        {"status": RouteStatus.ASSIGNED, "driver": None, "vehicle": None},  # no driver
+        {"capacity_override_reason": "Why"},  # a reason without a vehicle
+    ],
+)
+def test_the_database_rejects_inconsistent_assignments(
+    branch: Branch, fields: dict[str, Any]
+) -> None:
+    resolved = {
+        key: make_driver(branch)
+        if key == "driver" and value == "set"
+        else make_vehicle(branch)
+        if key == "vehicle" and value == "set"
+        else value
+        for key, value in fields.items()
+    }
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        RouteFactory.create(branch=branch, **resolved)
+
+
+def assign_action(actor_id: int, route_id: int, driver_id: uuid.UUID, vehicle_id: uuid.UUID) -> Any:
+    def action() -> None:
+        services.assign(
+            actor=User.objects.get(pk=actor_id),
+            route=Route.objects.get(pk=route_id),
+            version=1,
+            driver_id=driver_id,
+            vehicle_id=vehicle_id,
+            override_reason="",
+            request=request(),
+        )
+
+    return action
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_two_dispatchers_assigning_one_driver_to_two_routes_have_one_winner() -> None:
+    company = CompanyFactory.create()
+    branch = BranchFactory.create(company=company)
+    actor = UserFactory.create(company=company, roles=[RoleCode.OWNER])
+    first, second = RouteFactory.create(branch=branch), RouteFactory.create(branch=branch)
+    driver = make_driver(branch)
+    vehicles = [make_vehicle(branch), make_vehicle(branch)]
+
+    outcomes = run_in_threads(
+        [
+            assign_action(actor.pk, route.pk, driver.public_id, vehicle.public_id)
+            for route, vehicle in zip((first, second), vehicles, strict=True)
+        ]
+    )
+
+    assert outcomes == ["assignment.driver_conflict", "ok"]
+    assert Route.objects.filter(status=RouteStatus.ASSIGNED).count() == 1
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_two_dispatchers_assigning_one_vehicle_to_two_routes_have_one_winner() -> None:
+    company = CompanyFactory.create()
+    branch = BranchFactory.create(company=company)
+    actor = UserFactory.create(company=company, roles=[RoleCode.OWNER])
+    first, second = RouteFactory.create(branch=branch), RouteFactory.create(branch=branch)
+    vehicle = make_vehicle(branch)
+    drivers = [make_driver(branch), make_driver(branch)]
+
+    outcomes = run_in_threads(
+        [
+            assign_action(actor.pk, route.pk, driver.public_id, vehicle.public_id)
+            for route, driver in zip((first, second), drivers, strict=True)
+        ]
+    )
+
+    assert outcomes == ["assignment.vehicle_conflict", "ok"]
+    assert Route.objects.filter(status=RouteStatus.ASSIGNED).count() == 1
+
+
+@pytest.mark.django_db(transaction=True, serialized_rollback=True)
+def test_two_assigns_from_the_same_version_have_one_winner() -> None:
+    company = CompanyFactory.create()
+    branch = BranchFactory.create(company=company)
+    actor = UserFactory.create(company=company, roles=[RoleCode.OWNER])
+    route = RouteFactory.create(branch=branch)
+    pairs = [(make_driver(branch), make_vehicle(branch)) for _ in range(2)]
+
+    outcomes = run_in_threads(
+        [
+            assign_action(actor.pk, route.pk, driver.public_id, vehicle.public_id)
+            for driver, vehicle in pairs
+        ]
+    )
+
+    assert outcomes == ["ok", "route.version_conflict"]
+    assert Route.objects.get(pk=route.pk).version == 2
+
+
+def test_assign_and_unassign_refuse_routes_outside_the_actors_scope(
+    company: Company, branch: Branch, other_branch: Branch
+) -> None:
+    local = make_user(company, RoleCode.DISPATCHER, branch)
+    route = RouteFactory.create(branch=other_branch)
+    driver, vehicle = make_driver(other_branch), make_vehicle(other_branch)
+
+    calls: list[Any] = [
+        lambda: services.assign(
+            actor=local,
+            route=route,
+            version=1,
+            driver_id=driver.public_id,
+            vehicle_id=vehicle.public_id,
+            override_reason="",
+            request=request(),
+        ),
+        lambda: services.unassign(actor=local, route=route, version=1, request=request()),
+    ]
+    for call in calls:
+        with pytest.raises(DomainError) as error:
+            call()
+        assert str(error.value.error_code) == "not_found"
 
 
 def test_remove_stop_refuses_a_stop_that_is_not_on_the_route(

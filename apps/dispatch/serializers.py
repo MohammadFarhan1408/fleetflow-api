@@ -16,11 +16,23 @@ class RouteListQuerySerializer(serializers.Serializer[dict[str, Any]]):
     status = serializers.ChoiceField(choices=RouteStatus.choices, required=False)
 
 
+class _DriverSummarySerializer(serializers.Serializer[Any]):
+    public_id = serializers.UUIDField()
+    full_name = serializers.CharField(source="user.full_name")
+
+
+class _VehicleSummarySerializer(serializers.Serializer[Any]):
+    public_id = serializers.UUIDField()
+    registration_number = serializers.CharField()
+
+
 class RouteSerializer(serializers.ModelSerializer[Route]):
     """A route row. It must come from `selectors.routes_for_user`, which carries
     `stop_count`."""
 
     branch = _BranchSerializer(read_only=True)
+    driver = _DriverSummarySerializer(read_only=True, allow_null=True)
+    vehicle = _VehicleSummarySerializer(read_only=True, allow_null=True)
     stop_count = serializers.IntegerField(read_only=True)
 
     class Meta:
@@ -28,6 +40,9 @@ class RouteSerializer(serializers.ModelSerializer[Route]):
         fields = [
             "public_id",
             "branch",
+            "driver",
+            "vehicle",
+            "capacity_override_reason",
             "route_date",
             "status",
             "sequence_enforced",
@@ -122,6 +137,18 @@ class StopAddSerializer(RouteVersionSerializer):
         if start and end and end <= start:
             raise serializers.ValidationError({"window_end": "Must be after window_start."})
         return attrs
+
+
+class AssignSerializer(RouteVersionSerializer):
+    driver_id = serializers.UUIDField()
+    vehicle_id = serializers.UUIDField()
+    override_reason = serializers.CharField(
+        max_length=255,
+        required=False,
+        default="",
+        help_text="Required to go over the vehicle's capacity, which also needs "
+        "`dispatch.override_capacity`. Ignored when the load fits.",
+    )
 
 
 class ReorderSerializer(RouteVersionSerializer):

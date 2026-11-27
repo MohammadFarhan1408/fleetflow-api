@@ -4,19 +4,23 @@ caller's `version` and bumps it, so concurrent dispatchers get 409 instead of ov
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import DecimalField, F, Sum
 from django.http import HttpRequest
 from django.utils import timezone
 
 from apps.accounts.models import User
+from apps.accounts.permissions import get_user_permissions
 from apps.accounts.selectors import branches_in_scope
 from apps.audit import services as audit
 from apps.audit.models import AuditAction
 from apps.core.errors import DomainError, ErrorCode, invalid_reference
 from apps.dispatch import selectors
-from apps.dispatch.constants import MAX_STOPS_PER_ROUTE
+from apps.dispatch.constants import CM3_PER_M3, MAX_STOPS_PER_ROUTE
 from apps.dispatch.models import (
+    ACTIVE_STATUSES,
     CANCELLABLE_STATUSES,
     EDITABLE_STATUSES,
     Route,
@@ -25,10 +29,12 @@ from apps.dispatch.models import (
     StopStatus,
     StopType,
 )
-from apps.dispatch.permissions import DISPATCH_ALL_BRANCHES
+from apps.dispatch.permissions import DISPATCH_ALL_BRANCHES, DISPATCH_OVERRIDE_CAPACITY
+from apps.fleet import selectors as fleet_selectors
+from apps.fleet.models import Vehicle
 from apps.shipments import selectors as shipment_selectors
 from apps.shipments import services as shipment_services
-from apps.shipments.models import Shipment, ShipmentStatus
+from apps.shipments.models import Shipment, ShipmentItem, ShipmentStatus
 
 
 def _audit(
@@ -53,17 +59,27 @@ def _check_date(actor: User, route_date: date) -> None:
         )
 
 
-def _lock_route(actor: User, route: Route, version: int) -> Route:
+def _lock_scoped(actor: User, route: Route) -> Route:
+    """The route, locked, if the actor may see it; no version check (idempotent repeats)."""
     locked = (
         selectors.routes_in_scope(actor).select_for_update(of=("self",)).filter(pk=route.pk).first()
     )
     if locked is None:
         raise DomainError(ErrorCode.NOT_FOUND)
+    return locked
+
+
+def _check_version(locked: Route, version: int) -> None:
     if locked.version != version:
         raise DomainError(
             ErrorCode.ROUTE_VERSION_CONFLICT,
             detail=f"The route is at version {locked.version}, not {version}.",
         )
+
+
+def _lock_route(actor: User, route: Route, version: int) -> Route:
+    locked = _lock_scoped(actor, route)
+    _check_version(locked, version)
     return locked
 
 
@@ -275,6 +291,10 @@ def add_stop(
             authorized_by_caller=True,
         )
     _validate_stops(route)
+    if route.vehicle is not None:
+        excess = _capacity_excess(route, route.vehicle)
+        if excess:  # a stored override covered the old load only; it does not cover new stops
+            raise DomainError(ErrorCode.ASSIGNMENT_OVER_CAPACITY, detail=excess)
     _bump(route)
     return stop
 
@@ -325,4 +345,163 @@ def reorder_stops(*, actor: User, route: Route, version: int, stop_ids: list[uui
     _resequence([by_id[stop_id] for stop_id in stop_ids])
     _validate_stops(route)
     _bump(route)
+    return route
+
+
+# --- assignment ----------------------------------------------------------------------------
+
+
+def _load(route: Route) -> tuple[Decimal, Decimal]:
+    """Total weight (kg) and volume (m³) of the route's shipments, each counted once.
+    # ponytail: the whole route's total, not the peak load between pickups and deliveries;
+    # a per-sequence profile if dispatchers need it."""
+    shipments = RouteStop.objects.filter(route=route).values("shipment")
+    weight = Shipment.objects.filter(pk__in=shipments).aggregate(total=Sum("total_weight_kg"))
+    cubic_cm = ShipmentItem.objects.filter(shipment__in=shipments).aggregate(
+        total=Sum(
+            F("length_cm") * F("width_cm") * F("height_cm"),
+            output_field=DecimalField(max_digits=24, decimal_places=3),
+        )
+    )
+    return weight["total"] or Decimal(0), (cubic_cm["total"] or Decimal(0)) / CM3_PER_M3
+
+
+def _capacity_excess(route: Route, vehicle: Vehicle) -> str | None:
+    """How the route's load exceeds the vehicle's capacity, or None when it fits."""
+    weight, volume = _load(route)
+    if weight <= vehicle.capacity_weight_kg and volume <= vehicle.capacity_volume_m3:
+        return None
+    return (
+        f"The load is {weight:.3f} kg and {volume:.3f} m³; the vehicle takes "
+        f"{vehicle.capacity_weight_kg:.3f} kg and {vehicle.capacity_volume_m3:.3f} m³."
+    )
+
+
+@transaction.atomic
+def assign(
+    *,
+    actor: User,
+    route: Route,
+    version: int,
+    driver_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    override_reason: str,
+    request: HttpRequest,
+) -> Route:
+    """Give a planned (or assigned) route a driver and a vehicle, checked for the route date
+    (architecture §13). The driver and vehicle rows are locked, always in that order, so two
+    dispatchers cannot give one of them to two routes; the partial unique indexes are the
+    backstop. Repeating the current assignment is a no-op, even with a stale version."""
+    route = _lock_scoped(actor, route)
+    if (
+        route.status == RouteStatus.ASSIGNED
+        and route.driver is not None
+        and route.vehicle is not None
+        and route.driver.public_id == driver_id
+        and route.vehicle.public_id == vehicle_id
+    ):
+        return route
+    _check_version(route, version)
+    if route.status not in EDITABLE_STATUSES:
+        raise DomainError(
+            ErrorCode.ROUTE_INVALID_STATUS, detail=f"A {route.status} route cannot be assigned."
+        )
+    _check_date(actor, route.route_date)
+
+    on_date = route.route_date
+    driver = (
+        fleet_selectors.drivers_for_user(actor, on_date)
+        .select_for_update(of=("self",))
+        .filter(public_id=driver_id)
+        .first()
+    )
+    if driver is None:
+        raise invalid_reference("driver_id", "Driver not found.")
+    vehicle = (
+        fleet_selectors.vehicles_for_user(actor, on_date)
+        .select_for_update(of=("self",))
+        .filter(public_id=vehicle_id)
+        .first()
+    )
+    if vehicle is None:
+        raise invalid_reference("vehicle_id", "Vehicle not found.")
+    for field, home_branch_id in (
+        ("driver_id", driver.branch_id),
+        ("vehicle_id", vehicle.branch_id),
+    ):
+        if home_branch_id != route.branch_id:
+            raise DomainError(
+                ErrorCode.VALIDATION_INVALID,
+                errors={field: ["Must belong to the route's branch."]},
+            )
+
+    if driver_reasons := fleet_selectors.driver_unavailability(driver):
+        raise DomainError(
+            ErrorCode.ASSIGNMENT_DRIVER_UNAVAILABLE,
+            errors={"reasons": [str(reason) for reason in driver_reasons]},
+        )
+    if vehicle_reasons := fleet_selectors.vehicle_unavailability(vehicle):
+        raise DomainError(
+            ErrorCode.ASSIGNMENT_VEHICLE_UNAVAILABLE,
+            errors={"reasons": [str(reason) for reason in vehicle_reasons]},
+        )
+    if not fleet_selectors.license_covers(driver, vehicle, on_date):
+        raise DomainError(
+            ErrorCode.ASSIGNMENT_LICENSE_CATEGORY,
+            detail="The driver's licence does not cover category "
+            f"{vehicle.required_license_category}.",
+        )
+    others = (
+        Route.objects.for_company(actor.company)
+        .filter(route_date=on_date, status__in=ACTIVE_STATUSES)
+        .exclude(pk=route.pk)
+    )
+    if others.filter(driver=driver).exists():
+        raise DomainError(ErrorCode.ASSIGNMENT_DRIVER_CONFLICT)
+    if others.filter(vehicle=vehicle).exists():
+        raise DomainError(ErrorCode.ASSIGNMENT_VEHICLE_CONFLICT)
+
+    excess = _capacity_excess(route, vehicle)
+    if excess and not override_reason:
+        raise DomainError(ErrorCode.ASSIGNMENT_OVER_CAPACITY, detail=excess)
+    if excess and DISPATCH_OVERRIDE_CAPACITY not in get_user_permissions(actor):
+        raise DomainError(ErrorCode.PERMISSION_DENIED)
+
+    route.driver, route.vehicle = driver, vehicle
+    route.status = RouteStatus.ASSIGNED
+    # The reason is kept only when it was needed (the audit log never holds its text).
+    route.capacity_override_reason = override_reason if excess else ""
+    _bump(route, "driver", "vehicle", "status", "capacity_override_reason")
+    _audit(
+        AuditAction.ROUTE_ASSIGNED,
+        actor,
+        route,
+        request,
+        {
+            "status": route.status,
+            "driver": str(driver.public_id),
+            "vehicle": str(vehicle.public_id),
+            "capacity_override": "true" if excess else "false",
+        },
+    )
+    return route
+
+
+@transaction.atomic
+def unassign(*, actor: User, route: Route, version: int, request: HttpRequest) -> Route:
+    """Take the driver and vehicle off an assigned route, back to `planned`. Its stops, and
+    so its shipments' `assigned` status, stay (memory D-API-31). Repeating it is a no-op."""
+    route = _lock_scoped(actor, route)
+    if route.status == RouteStatus.PLANNED:
+        return route
+    _check_version(route, version)
+    if route.status != RouteStatus.ASSIGNED:
+        raise DomainError(
+            ErrorCode.ROUTE_INVALID_STATUS, detail=f"A {route.status} route cannot be unassigned."
+        )
+    route.driver = route.vehicle = None
+    route.status = RouteStatus.PLANNED
+    route.capacity_override_reason = ""
+    _bump(route, "driver", "vehicle", "status", "capacity_override_reason")
+    _audit(AuditAction.ROUTE_UNASSIGNED, actor, route, request, {"status": route.status})
     return route

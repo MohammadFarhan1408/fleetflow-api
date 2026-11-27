@@ -17,6 +17,7 @@ from apps.dispatch import selectors, services
 from apps.dispatch.models import Route
 from apps.dispatch.permissions import DISPATCH_MANAGE, DISPATCH_VIEW
 from apps.dispatch.serializers import (
+    AssignSerializer,
     ReorderSerializer,
     RouteCreateSerializer,
     RouteDetailSerializer,
@@ -178,6 +179,42 @@ class RouteCancelView(DispatchAccess):
         serializer = RouteVersionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         services.cancel_route(
+            actor=actor, route=route, version=serializer.validated_data["version"], request=request
+        )
+        return _route_response(request, route)
+
+
+class RouteAssignView(DispatchAccess):
+    """Give a route a driver and a vehicle (`dispatch.manage`), checked for the route date:
+    availability, licence, documents, one active route per date, branch and capacity. Over
+    capacity needs `override_reason` and `dispatch.override_capacity`. Repeating the same
+    assignment returns the route unchanged."""
+
+    @extend_schema(request=AssignSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS})
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = AssignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.assign(actor=actor, route=route, request=request, **serializer.validated_data)
+        return _route_response(request, route)
+
+
+class RouteUnassignView(DispatchAccess):
+    """Take the driver and vehicle off an `assigned` route, back to `planned`. Stops and
+    shipment status stay. Repeating it on a planned route is a no-op."""
+
+    @extend_schema(
+        request=RouteVersionSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = RouteVersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.unassign(
             actor=actor, route=route, version=serializer.validated_data["version"], request=request
         )
         return _route_response(request, route)

@@ -44,6 +44,8 @@ class AuditAction(models.TextChoices):
     BRANCH_CREATED = "branch.created", "Branch created"
     ROUTE_CREATED = "route.created", "Route created"
     ROUTE_CANCELLED = "route.cancelled", "Route cancelled"
+    ROUTE_ASSIGNED = "route.assigned", "Route driver and vehicle assigned"
+    ROUTE_UNASSIGNED = "route.unassigned", "Route driver and vehicle removed"
     FLEET_DOCUMENT_ADDED = "fleet_document.added", "Fleet document added"
     FLEET_DOCUMENT_ARCHIVED = "fleet_document.archived", "Fleet document archived"
     FLEET_DOCUMENT_DOWNLOADED = "fleet_document.downloaded", "Fleet document downloaded"

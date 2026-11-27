@@ -2,6 +2,7 @@ from django.db import models
 from django.db.models import Q
 
 from apps.core.models import PublicIdModel, TimeStampedModel
+from apps.fleet.models import Driver, Vehicle
 from apps.shipments.models import Shipment, ShipmentStatus
 from apps.tenancy.models import Branch, TenantScopedModel
 
@@ -41,6 +42,14 @@ class StopStatus(models.TextChoices):
 EDITABLE_STATUSES = (RouteStatus.PLANNED, RouteStatus.ASSIGNED)
 # Statuses a route can be cancelled from: shipments are still `assigned` in all of them.
 CANCELLABLE_STATUSES = (RouteStatus.PLANNED, RouteStatus.ASSIGNED, RouteStatus.DISPATCHED)
+# A driver and a vehicle can be on one route of these per date (architecture §13). Completed
+# and cancelled routes no longer hold them.
+ACTIVE_STATUSES = (
+    RouteStatus.ASSIGNED,
+    RouteStatus.LOADING,
+    RouteStatus.DISPATCHED,
+    RouteStatus.IN_PROGRESS,
+)
 
 
 class Route(TenantScopedModel, PublicIdModel, TimeStampedModel):
@@ -56,6 +65,15 @@ class Route(TenantScopedModel, PublicIdModel, TimeStampedModel):
     # When true, stops must be worked in order (checked from Phase 5).
     sequence_enforced = models.BooleanField(default=True)
     version = models.PositiveIntegerField(default=1)
+    # Set together by `services.assign` (memory D-API-31); a cancelled route keeps them as history.
+    driver = models.ForeignKey(
+        Driver, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    vehicle = models.ForeignKey(
+        Vehicle, null=True, blank=True, on_delete=models.PROTECT, related_name="+"
+    )
+    # Why the load was allowed over the vehicle's capacity; empty when it fits.
+    capacity_override_reason = models.CharField(max_length=255, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -69,6 +87,42 @@ class Route(TenantScopedModel, PublicIdModel, TimeStampedModel):
                     | (~Q(status=RouteStatus.CANCELLED) & Q(cancelled_at__isnull=True))
                 ),
                 name="route_cancelled_at_iff_cancelled",
+            ),
+            models.CheckConstraint(
+                condition=(
+                    Q(driver__isnull=True, vehicle__isnull=True)
+                    | Q(driver__isnull=False, vehicle__isnull=False)
+                ),
+                name="route_driver_and_vehicle_together",
+            ),
+            # Planned means nobody is assigned; every later status except cancelled has a driver.
+            models.CheckConstraint(
+                condition=(
+                    Q(status=RouteStatus.PLANNED, driver__isnull=True)
+                    | Q(status=RouteStatus.CANCELLED)
+                    | Q(
+                        status__in=[
+                            s for s in RouteStatus.values if s not in ("planned", "cancelled")
+                        ],
+                        driver__isnull=False,
+                    )
+                ),
+                name="route_assigned_has_driver",
+            ),
+            models.CheckConstraint(
+                condition=Q(capacity_override_reason="") | Q(vehicle__isnull=False),
+                name="route_override_reason_needs_vehicle",
+            ),
+            # Backstops for the conflict checks in `services.assign` (concurrent assigns).
+            models.UniqueConstraint(
+                fields=["driver", "route_date"],
+                condition=Q(status__in=ACTIVE_STATUSES),
+                name="route_one_active_per_driver_date",
+            ),
+            models.UniqueConstraint(
+                fields=["vehicle", "route_date"],
+                condition=Q(status__in=ACTIVE_STATUSES),
+                name="route_one_active_per_vehicle_date",
             ),
         ]
         indexes = [models.Index(fields=["company", "route_date"], name="route_company_date")]

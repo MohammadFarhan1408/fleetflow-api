@@ -19,7 +19,7 @@ def routes_in_scope(user: User) -> QuerySet[Route]:
     return (
         Route.objects.for_company(user.company)
         .filter(branch__in=branches_in_scope(user, DISPATCH_ALL_BRANCHES))
-        .select_related("branch")
+        .select_related("branch", "driver__user", "vehicle")
     )
 
 
