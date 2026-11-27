@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import psycopg
 from django.db import IntegrityError, transaction
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
 
@@ -193,13 +194,20 @@ def transition(
     reason: str = "",
     request: HttpRequest,
     authorized_by_caller: bool = False,
+    source: EventSource = EventSource.ADMIN,
+    scope: QuerySet[Shipment] | None = None,
 ) -> Shipment:
     """Move a shipment along one edge of the lifecycle and append its status event.
 
     The row is locked and `expected_status` must still hold, so of two concurrent changes
     exactly one wins and the other gets `shipment.status_conflict`.
+
+    `scope` replaces the actor's branch scope for callers that have already proven the
+    shipment visible another way (a driver working a route they were assigned has no
+    shipment branches); it must still be a company-scoped queryset. `source` is the event's
+    origin.
     """
-    shipment = _lock_visible(actor, shipment)
+    shipment = _lock_visible(actor, shipment, scope)
     current = _check_expected(shipment, expected_status)
     if to not in ALLOWED_TRANSITIONS[current]:
         raise DomainError(ErrorCode.SHIPMENT_INVALID_TRANSITION)
@@ -217,7 +225,9 @@ def transition(
 
     shipment.status = to
     shipment.save(update_fields=["status", "updated_at"])
-    _append_status_event(shipment, actor, TrackingEventType.STATUS_CHANGE, reason=reason)
+    _append_status_event(
+        shipment, actor, TrackingEventType.STATUS_CHANGE, reason=reason, source=source
+    )
     if current == _S.CANCELLED:
         _audit(
             AuditAction.SHIPMENT_RECOVERED,
@@ -282,6 +292,7 @@ def _append_status_event(
     *,
     reason: str = "",
     public: bool = True,
+    source: EventSource = EventSource.ADMIN,
 ) -> None:
     # Same transaction as the status write, so the two can never disagree (§12).
     TrackingEvent.objects.create(
@@ -291,16 +302,19 @@ def _append_status_event(
         status_after=shipment.status,
         occurred_at=timezone.now(),
         actor=actor,
-        source=EventSource.ADMIN,
+        source=source,
         reason=reason,
         public=public,
     )
 
 
-def _lock_visible(actor: User, shipment: Shipment) -> Shipment:
+def _lock_visible(
+    actor: User, shipment: Shipment, scope: QuerySet[Shipment] | None = None
+) -> Shipment:
     # Defence in depth: views resolve the shipment through the scoped selector, but the
     # service must not rely on that. Same answer as a missing shipment.
-    locked = selectors.shipments_for_user(actor).select_for_update().filter(pk=shipment.pk).first()
+    visible = scope if scope is not None else selectors.shipments_for_user(actor)
+    locked = visible.select_for_update().filter(pk=shipment.pk).first()
     if locked is None:
         raise DomainError(ErrorCode.NOT_FOUND)
     return locked

@@ -23,18 +23,23 @@ from apps.dispatch.models import (
     ACTIVE_STATUSES,
     CANCELLABLE_STATUSES,
     EDITABLE_STATUSES,
+    ManifestItem,
     Route,
     RouteStatus,
     RouteStop,
     StopStatus,
     StopType,
 )
-from apps.dispatch.permissions import DISPATCH_ALL_BRANCHES, DISPATCH_OVERRIDE_CAPACITY
+from apps.dispatch.permissions import (
+    DISPATCH_ALL_BRANCHES,
+    DISPATCH_OVERRIDE_CAPACITY,
+    DISPATCH_REASSIGN_ACTIVE,
+)
 from apps.fleet import selectors as fleet_selectors
-from apps.fleet.models import Vehicle
+from apps.fleet.models import Driver, Vehicle
 from apps.shipments import selectors as shipment_selectors
 from apps.shipments import services as shipment_services
-from apps.shipments.models import Shipment, ShipmentItem, ShipmentStatus
+from apps.shipments.models import EventSource, Shipment, ShipmentItem, ShipmentStatus
 
 
 def _audit(
@@ -377,37 +382,12 @@ def _capacity_excess(route: Route, vehicle: Vehicle) -> str | None:
     )
 
 
-@transaction.atomic
-def assign(
-    *,
-    actor: User,
-    route: Route,
-    version: int,
-    driver_id: uuid.UUID,
-    vehicle_id: uuid.UUID,
-    override_reason: str,
-    request: HttpRequest,
-) -> Route:
-    """Give a planned (or assigned) route a driver and a vehicle, checked for the route date
-    (architecture §13). The driver and vehicle rows are locked, always in that order, so two
-    dispatchers cannot give one of them to two routes; the partial unique indexes are the
-    backstop. Repeating the current assignment is a no-op, even with a stale version."""
-    route = _lock_scoped(actor, route)
-    if (
-        route.status == RouteStatus.ASSIGNED
-        and route.driver is not None
-        and route.vehicle is not None
-        and route.driver.public_id == driver_id
-        and route.vehicle.public_id == vehicle_id
-    ):
-        return route
-    _check_version(route, version)
-    if route.status not in EDITABLE_STATUSES:
-        raise DomainError(
-            ErrorCode.ROUTE_INVALID_STATUS, detail=f"A {route.status} route cannot be assigned."
-        )
-    _check_date(actor, route.route_date)
-
+def _lock_assignees(
+    actor: User, route: Route, driver_id: uuid.UUID, vehicle_id: uuid.UUID
+) -> tuple[Driver, Vehicle]:
+    """Lock the driver, then the vehicle, and check both for the route date: in scope, the
+    route's branch, available, licence category, and no other active route that date. Always
+    that lock order, so two callers cannot deadlock."""
     on_date = route.route_date
     driver = (
         fleet_selectors.drivers_for_user(actor, on_date)
@@ -460,7 +440,41 @@ def assign(
         raise DomainError(ErrorCode.ASSIGNMENT_DRIVER_CONFLICT)
     if others.filter(vehicle=vehicle).exists():
         raise DomainError(ErrorCode.ASSIGNMENT_VEHICLE_CONFLICT)
+    return driver, vehicle
 
+
+@transaction.atomic
+def assign(
+    *,
+    actor: User,
+    route: Route,
+    version: int,
+    driver_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    override_reason: str,
+    request: HttpRequest,
+) -> Route:
+    """Give a planned (or assigned) route a driver and a vehicle, checked for the route date
+    (architecture §13). The driver and vehicle rows are locked, always in that order, so two
+    dispatchers cannot give one of them to two routes; the partial unique indexes are the
+    backstop. Repeating the current assignment is a no-op, even with a stale version."""
+    route = _lock_scoped(actor, route)
+    if (
+        route.status == RouteStatus.ASSIGNED
+        and route.driver is not None
+        and route.vehicle is not None
+        and route.driver.public_id == driver_id
+        and route.vehicle.public_id == vehicle_id
+    ):
+        return route
+    _check_version(route, version)
+    if route.status not in EDITABLE_STATUSES:
+        raise DomainError(
+            ErrorCode.ROUTE_INVALID_STATUS, detail=f"A {route.status} route cannot be assigned."
+        )
+    _check_date(actor, route.route_date)
+
+    driver, vehicle = _lock_assignees(actor, route, driver_id, vehicle_id)
     excess = _capacity_excess(route, vehicle)
     if excess and not override_reason:
         raise DomainError(ErrorCode.ASSIGNMENT_OVER_CAPACITY, detail=excess)
@@ -505,3 +519,165 @@ def unassign(*, actor: User, route: Route, version: int, request: HttpRequest) -
     _bump(route, "driver", "vehicle", "status", "capacity_override_reason")
     _audit(AuditAction.ROUTE_UNASSIGNED, actor, route, request, {"status": route.status})
     return route
+
+
+# --- dispatch, reassignment and the driver's start ------------------------------------------
+
+
+@transaction.atomic
+def dispatch_route(*, actor: User, route: Route, version: int, request: HttpRequest) -> Route:
+    """Send an assigned route out. The driver, vehicle, licence and capacity are checked
+    again for the route date (they may have changed since assignment), and the shipments
+    the route is expected to carry are recorded as its manifest. Repeating it on a
+    dispatched route is a no-op. Shipments change status only when the driver starts."""
+    route = _lock_scoped(actor, route)
+    if route.status == RouteStatus.DISPATCHED:
+        return route
+    _check_version(route, version)
+    if route.status != RouteStatus.ASSIGNED or route.driver is None or route.vehicle is None:
+        raise DomainError(
+            ErrorCode.ROUTE_INVALID_STATUS, detail=f"A {route.status} route cannot be dispatched."
+        )
+    _check_date(actor, route.route_date)
+    stops = _ordered_stops(route)
+    if not stops:
+        raise DomainError(ErrorCode.ROUTE_EMPTY)
+    driver, vehicle = _lock_assignees(actor, route, route.driver.public_id, route.vehicle.public_id)
+    excess = _capacity_excess(route, vehicle)
+    if excess and not route.capacity_override_reason:  # an override covers the load it was given
+        raise DomainError(ErrorCode.ASSIGNMENT_OVER_CAPACITY, detail=excess)
+    ManifestItem.objects.bulk_create(
+        ManifestItem(company=actor.company, route=route, shipment_id=shipment_id)
+        for shipment_id in dict.fromkeys(stop.shipment_id for stop in stops)
+    )
+    route.status = RouteStatus.DISPATCHED
+    route.dispatched_at = timezone.now()
+    _bump(route, "status", "dispatched_at")
+    _audit(
+        AuditAction.ROUTE_DISPATCHED,
+        actor,
+        route,
+        request,
+        {
+            "status": route.status,
+            "driver": str(driver.public_id),
+            "vehicle": str(vehicle.public_id),
+        },
+    )
+    return route
+
+
+@transaction.atomic
+def reassign(
+    *,
+    actor: User,
+    route: Route,
+    version: int,
+    driver_id: uuid.UUID,
+    vehicle_id: uuid.UUID,
+    request: HttpRequest,
+) -> Route:
+    """Change the driver and vehicle of a dispatched or in-progress route
+    (`dispatch.reassign_active`). Allowed only while every stop is still pending: splitting
+    a route that has worked stops waits for the delivery workflow (Phase 5, memory D-API-32).
+    The route goes back to `dispatched`, so the new driver starts it with their own shift.
+    The new vehicle must fit the load; there is no override here."""
+    if DISPATCH_REASSIGN_ACTIVE not in get_user_permissions(actor):
+        raise DomainError(ErrorCode.PERMISSION_DENIED)
+    route = _lock_scoped(actor, route)
+    if (
+        route.driver is not None
+        and route.vehicle is not None
+        and route.driver.public_id == driver_id
+        and route.vehicle.public_id == vehicle_id
+        and route.status in (RouteStatus.DISPATCHED, RouteStatus.IN_PROGRESS)
+    ):
+        return route
+    _check_version(route, version)
+    if route.status not in (RouteStatus.DISPATCHED, RouteStatus.IN_PROGRESS):
+        raise DomainError(
+            ErrorCode.ROUTE_INVALID_STATUS,
+            detail=f"A {route.status} route cannot be reassigned here; use assign or unassign.",
+        )
+    if any(stop.status != StopStatus.PENDING for stop in _ordered_stops(route)):
+        raise DomainError(ErrorCode.ROUTE_STOPS_STARTED)
+    previous_driver, previous_vehicle = route.driver, route.vehicle
+    driver, vehicle = _lock_assignees(actor, route, driver_id, vehicle_id)
+    excess = _capacity_excess(route, vehicle)
+    if excess:
+        raise DomainError(ErrorCode.ASSIGNMENT_OVER_CAPACITY, detail=excess)
+    route.driver, route.vehicle = driver, vehicle
+    route.status = RouteStatus.DISPATCHED
+    route.started_at = None
+    route.capacity_override_reason = ""
+    _bump(route, "driver", "vehicle", "status", "started_at", "capacity_override_reason")
+    _audit(
+        AuditAction.ROUTE_REASSIGNED,
+        actor,
+        route,
+        request,
+        {
+            "status": route.status,
+            "driver": str(driver.public_id),
+            "vehicle": str(vehicle.public_id),
+            "previous_driver": str(previous_driver.public_id) if previous_driver else "",
+            "previous_vehicle": str(previous_vehicle.public_id) if previous_vehicle else "",
+        },
+    )
+    return route
+
+
+@transaction.atomic
+def start_route(*, actor: User, public_id: uuid.UUID, request: HttpRequest) -> Route:
+    """The assigned driver starts a dispatched route (needs an open shift, and the route's
+    date must have come). Shipments with a delivery stop that were already at the warehouse
+    become `out_for_delivery`; those still to be picked up stay `assigned` until the
+    delivery workflow confirms the pickup (Phase 5, memory D-API-32). Repeating it on a
+    started route is a no-op. The driver's own route answers 409 `route.not_dispatched` until
+    it is dispatched, so it is looked up here rather than through the dispatched-only
+    selector."""
+    driver = fleet_selectors.own_driver(actor, actor.company.local_today())
+    locked = (
+        Route.objects.for_company(actor.company)
+        .select_for_update(of=("self",))
+        .filter(public_id=public_id, driver=driver)
+        .first()
+    )
+    if locked is None:  # not theirs, not another company's, or never assigned
+        raise DomainError(ErrorCode.NOT_FOUND)
+    if locked.status == RouteStatus.IN_PROGRESS:
+        return locked
+    if locked.status != RouteStatus.DISPATCHED:
+        raise DomainError(ErrorCode.ROUTE_NOT_DISPATCHED)
+    if locked.route_date > actor.company.local_today():
+        raise DomainError(ErrorCode.ROUTE_NOT_DUE)
+    if fleet_selectors.active_shift(driver) is None:
+        raise DomainError(ErrorCode.SHIFT_NOT_OPEN)
+    route_shipments = Shipment.objects.for_company(actor.company).filter(
+        pk__in=RouteStop.objects.filter(route=locked).values("shipment")
+    )
+    for stop in (
+        RouteStop.objects.filter(
+            route=locked,
+            type=StopType.DELIVERY,
+            shipment_status_before=ShipmentStatus.SORTED,
+            shipment__status=ShipmentStatus.ASSIGNED,  # skip one an admin has since corrected
+        )
+        .select_related("shipment")
+        .order_by("sequence")
+    ):
+        shipment_services.transition(
+            actor=actor,
+            shipment=stop.shipment,
+            to=ShipmentStatus.OUT_FOR_DELIVERY,
+            expected_status=ShipmentStatus.ASSIGNED,
+            reason="Route started",
+            request=request,
+            authorized_by_caller=True,
+            source=EventSource.DRIVER_APP,
+            scope=route_shipments,
+        )
+    locked.status = RouteStatus.IN_PROGRESS
+    locked.started_at = timezone.now()
+    _bump(locked, "status", "started_at")
+    return locked

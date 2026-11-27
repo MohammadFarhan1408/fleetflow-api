@@ -1676,6 +1676,166 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
           description: ''
+  /api/v1/me/routes/:
+    get:
+      operationId: me_routes_list
+      description: The driver's dispatched, in-progress and completed routes, newest
+        first.
+      parameters:
+      - name: cursor
+        required: false
+        in: query
+        description: The pagination cursor value.
+        schema:
+          type: string
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: route_date
+        schema:
+          type: string
+          format: date
+      - in: query
+        name: status
+        schema:
+          enum:
+          - dispatched
+          - in_progress
+          - completed
+          type: string
+          minLength: 1
+        description: |-
+          * `dispatched` - Dispatched
+          * `in_progress` - In progress
+          * `completed` - Completed
+      tags:
+      - me
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDriverRouteList'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/me/routes/{public_id}/:
+    get:
+      operationId: me_routes_retrieve
+      description: One of the driver's own routes with its stops, in order.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - me
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverRouteDetail'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/me/routes/{public_id}/start/:
+    post:
+      operationId: me_routes_start_create
+      description: |-
+        Start a dispatched route (needs an open shift; `Idempotency-Key` required). 409
+        `route.not_dispatched`, `route.not_due` (before the route date) or `shift.not_open`.
+        Repeating it on a started route returns it unchanged.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - me
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverRouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
   /api/v1/me/shift/end/:
     post:
       operationId: me_shift_end_create
@@ -2097,6 +2257,140 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/RouteVersion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/dispatch/:
+    post:
+      operationId: routes_dispatch_create
+      description: |-
+        Send an `assigned` route out (`dispatch.manage`). The driver, vehicle, licence and
+        capacity are checked again for the route date, and the route's shipments are recorded as
+        its manifest. 409 `route.empty` without stops. Repeating it returns the route unchanged.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteVersion'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RouteDetail'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '401':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '404':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '409':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+          description: ''
+  /api/v1/routes/{public_id}/reassign/:
+    post:
+      operationId: routes_reassign_create
+      description: |-
+        Change the driver and vehicle of a `dispatched` or `in_progress` route
+        (`dispatch.manage` and `dispatch.reassign_active`), while every stop is still pending.
+        The route returns to `dispatched` for the new driver to start.
+      parameters:
+      - in: path
+        name: public_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - routes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Reassign'
         required: true
       security:
       - jwtAuth: []
@@ -4508,6 +4802,128 @@ components:
       required:
       - type
       - upload_id
+    DriverRoute:
+      type: object
+      description: |-
+        A route as its driver sees it (from `selectors.own_routes`, which carries
+        `stop_count`): no assignment internals, only the vehicle and the stops to work.
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        vehicle:
+          allOf:
+          - $ref: '#/components/schemas/_VehicleSummary'
+          readOnly: true
+          nullable: true
+        route_date:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RouteStatusEnum'
+          readOnly: true
+          default: planned
+        sequence_enforced:
+          type: boolean
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+        stop_count:
+          type: integer
+          readOnly: true
+        dispatched_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - branch
+      - dispatched_at
+      - public_id
+      - route_date
+      - sequence_enforced
+      - started_at
+      - status
+      - stop_count
+      - vehicle
+      - version
+    DriverRouteDetail:
+      type: object
+      description: |-
+        A route as its driver sees it (from `selectors.own_routes`, which carries
+        `stop_count`): no assignment internals, only the vehicle and the stops to work.
+      properties:
+        public_id:
+          type: string
+          format: uuid
+          readOnly: true
+        branch:
+          allOf:
+          - $ref: '#/components/schemas/_Branch'
+          readOnly: true
+        vehicle:
+          allOf:
+          - $ref: '#/components/schemas/_VehicleSummary'
+          readOnly: true
+          nullable: true
+        route_date:
+          type: string
+          format: date
+          readOnly: true
+        status:
+          allOf:
+          - $ref: '#/components/schemas/RouteStatusEnum'
+          readOnly: true
+          default: planned
+        sequence_enforced:
+          type: boolean
+          readOnly: true
+        version:
+          type: integer
+          readOnly: true
+        stop_count:
+          type: integer
+          readOnly: true
+        dispatched_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        stops:
+          type: array
+          items:
+            $ref: '#/components/schemas/RouteStop'
+          readOnly: true
+      required:
+      - branch
+      - dispatched_at
+      - public_id
+      - route_date
+      - sequence_enforced
+      - started_at
+      - status
+      - stop_count
+      - stops
+      - vehicle
+      - version
     DriverStatus:
       type: object
       properties:
@@ -4974,6 +5390,25 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Driver'
+    PaginatedDriverRouteList:
+      type: object
+      required:
+      - results
+      properties:
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cD00ODY%3D"
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?cursor=cj0xJnA9NDg3
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverRoute'
     PaginatedLeaveList:
       type: object
       required:
@@ -5381,6 +5816,23 @@ components:
       - service
       - status
       - tracking_number
+    Reassign:
+      type: object
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The route's `version` as the client last saw it.
+        driver_id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+      required:
+      - driver_id
+      - vehicle_id
+      - version
     RefreshToken:
       type: object
       properties:
@@ -5474,6 +5926,16 @@ components:
         stop_count:
           type: integer
           readOnly: true
+        dispatched_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         cancelled_at:
           type: string
           format: date-time
@@ -5492,10 +5954,12 @@ components:
       - cancelled_at
       - capacity_override_reason
       - created_at
+      - dispatched_at
       - driver
       - public_id
       - route_date
       - sequence_enforced
+      - started_at
       - status
       - stop_count
       - updated_at
@@ -5562,6 +6026,16 @@ components:
         stop_count:
           type: integer
           readOnly: true
+        dispatched_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         cancelled_at:
           type: string
           format: date-time
@@ -5585,10 +6059,12 @@ components:
       - cancelled_at
       - capacity_override_reason
       - created_at
+      - dispatched_at
       - driver
       - public_id
       - route_date
       - sequence_enforced
+      - started_at
       - status
       - stop_count
       - stops
@@ -6149,8 +6625,11 @@ components:
     TrackingEventSourceEnum:
       enum:
       - admin
+      - driver_app
       type: string
-      description: '* `admin` - Admin console'
+      description: |-
+        * `admin` - Admin console
+        * `driver_app` - Driver app
     TrackingEventTypeEnum:
       enum:
       - status_change

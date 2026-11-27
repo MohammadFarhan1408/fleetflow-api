@@ -1,6 +1,7 @@
 from datetime import date
 
 import factory
+from django.utils import timezone
 
 from apps.dispatch.models import Route, RouteStatus, RouteStop, StopType
 from apps.fleet.factories import DriverFactory, VehicleFactory
@@ -24,6 +25,18 @@ class RouteFactory(factory.django.DjangoModelFactory[Route]):
     # the factory supplies them; pass `driver=None, vehicle=None` or your own to override.
     has_crew = factory.LazyAttribute(
         lambda o: o.status not in (RouteStatus.PLANNED, RouteStatus.CANCELLED)
+    )
+    dispatched_at = factory.LazyAttribute(
+        lambda o: (
+            timezone.now()
+            if o.status in (RouteStatus.DISPATCHED, RouteStatus.IN_PROGRESS, RouteStatus.COMPLETED)
+            else None
+        )
+    )
+    started_at = factory.LazyAttribute(
+        lambda o: (
+            timezone.now() if o.status in (RouteStatus.IN_PROGRESS, RouteStatus.COMPLETED) else None
+        )
     )
     driver = factory.Maybe(
         "has_crew",

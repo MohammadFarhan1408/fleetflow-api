@@ -11,13 +11,17 @@ from rest_framework.views import APIView
 
 from apps.accounts.authentication import current_user
 from apps.accounts.permissions import HasRequiredPermission
-from apps.core.idempotency import idempotent
+from apps.core.idempotency import idempotency_required, idempotent
 from apps.core.serializers import ErrorSerializer
 from apps.dispatch import selectors, services
 from apps.dispatch.models import Route
-from apps.dispatch.permissions import DISPATCH_MANAGE, DISPATCH_VIEW
+from apps.dispatch.permissions import DISPATCH_MANAGE, DISPATCH_VIEW, ROUTES_WORK_OWN
 from apps.dispatch.serializers import (
     AssignSerializer,
+    DriverRouteDetailSerializer,
+    DriverRouteListQuerySerializer,
+    DriverRouteSerializer,
+    ReassignSerializer,
     ReorderSerializer,
     RouteCreateSerializer,
     RouteDetailSerializer,
@@ -218,3 +222,92 @@ class RouteUnassignView(DispatchAccess):
             actor=actor, route=route, version=serializer.validated_data["version"], request=request
         )
         return _route_response(request, route)
+
+
+class RouteDispatchView(DispatchAccess):
+    """Send an `assigned` route out (`dispatch.manage`). The driver, vehicle, licence and
+    capacity are checked again for the route date, and the route's shipments are recorded as
+    its manifest. 409 `route.empty` without stops. Repeating it returns the route unchanged."""
+
+    @extend_schema(
+        request=RouteVersionSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = RouteVersionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.dispatch_route(
+            actor=actor, route=route, version=serializer.validated_data["version"], request=request
+        )
+        return _route_response(request, route)
+
+
+class RouteReassignView(DispatchAccess):
+    """Change the driver and vehicle of a `dispatched` or `in_progress` route
+    (`dispatch.manage` and `dispatch.reassign_active`), while every stop is still pending.
+    The route returns to `dispatched` for the new driver to start."""
+
+    @extend_schema(
+        request=ReassignSerializer, responses={200: RouteDetailSerializer, **WRITE_ERRORS}
+    )
+    @idempotent
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        route = selectors.get_route(actor, public_id)
+        serializer = ReassignSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.reassign(actor=actor, route=route, request=request, **serializer.validated_data)
+        return _route_response(request, route)
+
+
+# --- the signed-in driver ------------------------------------------------------------------
+
+
+class DriverRouteAccess(APIView):
+    """Endpoints for the `driver` role on their own routes (`routes.work_own`). Without an
+    active profile they answer 403 `driver.profile_inactive`."""
+
+    permission_classes = [IsAuthenticated, HasRequiredPermission]
+    required_permissions = {"GET": ROUTES_WORK_OWN, "POST": ROUTES_WORK_OWN}
+
+
+@extend_schema_view(
+    get=extend_schema(
+        parameters=[DriverRouteListQuerySerializer],
+        responses={200: DriverRouteSerializer, 401: ERROR, 403: ERROR},
+    )
+)
+class MyRouteListView(DriverRouteAccess, ListAPIView[Route]):
+    """The driver's dispatched, in-progress and completed routes, newest first."""
+
+    serializer_class = DriverRouteSerializer
+
+    def get_queryset(self) -> QuerySet[Route]:
+        query = DriverRouteListQuerySerializer(data=self.request.query_params)
+        query.is_valid(raise_exception=True)
+        return selectors.list_own_routes(current_user(self.request), **query.validated_data)
+
+
+class MyRouteDetailView(DriverRouteAccess):
+    """One of the driver's own routes with its stops, in order."""
+
+    @extend_schema(responses={200: DriverRouteDetailSerializer, **READ_ERRORS})
+    def get(self, request: Request, public_id: uuid.UUID) -> Response:
+        route = selectors.get_own_route(current_user(request), public_id)
+        return Response(DriverRouteDetailSerializer(route).data)
+
+
+class MyRouteStartView(DriverRouteAccess):
+    """Start a dispatched route (needs an open shift; `Idempotency-Key` required). 409
+    `route.not_dispatched`, `route.not_due` (before the route date) or `shift.not_open`.
+    Repeating it on a started route returns it unchanged."""
+
+    @extend_schema(request=None, responses={200: DriverRouteDetailSerializer, **WRITE_ERRORS})
+    @idempotency_required
+    def post(self, request: Request, public_id: uuid.UUID) -> Response:
+        actor = current_user(request)
+        services.start_route(actor=actor, public_id=public_id, request=request)
+        fresh = selectors.get_own_route(actor, public_id)
+        return Response(DriverRouteDetailSerializer(fresh).data)

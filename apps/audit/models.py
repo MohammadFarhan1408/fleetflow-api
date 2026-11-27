@@ -46,6 +46,8 @@ class AuditAction(models.TextChoices):
     ROUTE_CANCELLED = "route.cancelled", "Route cancelled"
     ROUTE_ASSIGNED = "route.assigned", "Route driver and vehicle assigned"
     ROUTE_UNASSIGNED = "route.unassigned", "Route driver and vehicle removed"
+    ROUTE_DISPATCHED = "route.dispatched", "Route dispatched"
+    ROUTE_REASSIGNED = "route.reassigned", "Active route reassigned"
     FLEET_DOCUMENT_ADDED = "fleet_document.added", "Fleet document added"
     FLEET_DOCUMENT_ARCHIVED = "fleet_document.archived", "Fleet document archived"
     FLEET_DOCUMENT_DOWNLOADED = "fleet_document.downloaded", "Fleet document downloaded"

@@ -75,6 +75,9 @@ class Route(TenantScopedModel, PublicIdModel, TimeStampedModel):
     # Why the load was allowed over the vehicle's capacity; empty when it fits.
     capacity_override_reason = models.CharField(max_length=255, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    # When the dispatcher sent the route out, and when the driver started it (memory D-API-32).
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -108,6 +111,18 @@ class Route(TenantScopedModel, PublicIdModel, TimeStampedModel):
                     )
                 ),
                 name="route_assigned_has_driver",
+            ),
+            # A route that went out keeps `dispatched_at` (even if cancelled later); one that
+            # was started has `started_at`.
+            models.CheckConstraint(
+                condition=Q(dispatched_at__isnull=False)
+                | Q(status__in=[RouteStatus.PLANNED, RouteStatus.ASSIGNED, RouteStatus.CANCELLED]),
+                name="route_dispatched_has_dispatched_at",
+            ),
+            models.CheckConstraint(
+                condition=Q(started_at__isnull=False)
+                | ~Q(status__in=[RouteStatus.IN_PROGRESS, RouteStatus.COMPLETED]),
+                name="route_started_has_started_at",
             ),
             models.CheckConstraint(
                 condition=Q(capacity_override_reason="") | Q(vehicle__isnull=False),
@@ -185,3 +200,22 @@ class RouteStop(TenantScopedModel, PublicIdModel, TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.route_id}#{self.sequence}"
+
+
+class ManifestItem(TenantScopedModel, PublicIdModel, TimeStampedModel):
+    """One shipment the route is expected to carry, recorded when it is dispatched (the
+    expected set that Phase 6 loading scans are reconciled against; memory D-API-32). Kept
+    as history if the route is cancelled."""
+
+    route = models.ForeignKey(Route, on_delete=models.PROTECT, related_name="manifest")
+    shipment = models.ForeignKey(Shipment, on_delete=models.PROTECT, related_name="+")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["route", "shipment"], name="manifest_item_unique_shipment"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.route_id}:{self.shipment_id}"
